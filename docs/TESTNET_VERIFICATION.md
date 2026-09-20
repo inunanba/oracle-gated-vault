@@ -62,14 +62,14 @@ Optional interact (still OWNER):
 
 - [ ] Public MIT repo URL works for a third party (`npm create scaffold-hbar@latest -- --template <owner>/<repo>`)
 - [ ] Real Hashscan/mirror URL opens your deploy
-- [x] HubSpot registration completed on https://hedera.com/scaffold-hbar-template-bounty/
+- [ ] HubSpot registration completed on https://hedera.com/blog/scaffold-hbar-template-bounty/
 - [ ] No `.env` or private keys in the public repo
 
 ## What Bot already verified (no keys)
 
 - `hardhat:compile` exit 0
-- `hardhat:test` green (19 passing unit)
-- `next:build` exit 0 after `@x402/*` peer deps (gen3)
-- lint/format clean (gen3)
+- `hardhat:test` green (unit)
+- `next:build` exit 0 after `@x402/*` peer deps
+- lint/format clean
 
-Bot stops before private-key deploy. Steps 2–4 remain OWNER.
+Bot stops here. Steps 1–4 above remain OWNER.
