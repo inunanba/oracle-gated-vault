@@ -1,0 +1,61 @@
+{
+  "name": "oracle-gated-vault",
+  "description": "Oracle-gated vault template: Supra/Pyth-style price band gates deposits and withdrawals on Hedera. Mock oracle for local DX; read-only live feed docs when testnet oracle is thin.",
+  "version": "0.1.0",
+  "create-scaffold-hbar": {
+    "capabilities": {
+      "frontend": ["nextjs-app"],
+      "solidityFramework": ["hardhat"],
+      "packageManager": ["npm", "yarn"]
+    },
+    "defaults": {
+      "frontend": "nextjs-app",
+      "solidityFramework": "hardhat",
+      "packageManager": "npm"
+    },
+    "envVars": [
+      {
+        "key": "NEXT_PUBLIC_ORACLE_MODE",
+        "description": "mock | read-only-live — local default is mock (no keys)"
+      },
+      {
+        "key": "NEXT_PUBLIC_PRICE_FEED_ID",
+        "description": "Optional Pyth/Supra feed id for read-only live mode"
+      }
+    ],
+    "outro": {
+      "sections": [
+        {
+          "title": "Next steps",
+          "steps": [
+            {
+              "label": "Install & format",
+              "command": "npm install --legacy-peer-deps && npm run format"
+            },
+            {
+              "label": "Compile + unit tests (no keys)",
+              "command": "npm run hardhat:compile && npm run hardhat:test"
+            },
+            {
+              "label": "Local chain + deploy vault",
+              "command": "{run:framework:chain}"
+            },
+            {
+              "command": "{run:framework:deploy} --network localhost --tags OracleGatedVault"
+            },
+            {
+              "label": "Start frontend",
+              "command": "{run:next:dev}"
+            },
+            {
+              "text": "OWNER: fund testnet via portal.hedera.com faucet, then deploy --network hederaTestnet and attach Hashscan link. Do not commit .env."
+            },
+            {
+              "text": "Read docs/ORACLE_ADAPTERS.md and docs/TESTNET_VERIFICATION.md before live testnet. Never commit .env or fabricate Hashscan URLs."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
