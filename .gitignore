@@ -1,0 +1,38 @@
+# dependencies
+node_modules
+
+# npm
+.npm/*
+!.npm/patches
+!.npm/plugins
+!.npm/releases
+!.npm/sdks
+!.npm/versions
+
+# eslint
+.eslintcache
+
+# misc
+.DS_Store
+
+# IDE
+.vscode
+.idea
+
+# cli
+dist
+
+.env
+
+# build / tooling (belt-and-suspenders)
+.next
+packages/nextjs/.next
+packages/hardhat/artifacts
+packages/hardhat/cache
+packages/hardhat/typechain-types
+packages/hardhat/deployments
+coverage
+*.tsbuildinfo
+.env.*
+!.env.example
+!**/.env.example
