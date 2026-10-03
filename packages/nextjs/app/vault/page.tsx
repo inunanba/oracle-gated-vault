@@ -24,8 +24,8 @@ const VaultPage: NextPage = () => {
           <p className="text-base-content/80 m-0">
             Deposits and withdrawals only go through while the HBAR/USD oracle price is fresh and inside the
             vault&apos;s band. On Hedera the vault reads the Chainlink Data Feed through an adapter; a Pyth pull-oracle
-            adapter ships alongside it. Gated actions are mirrored by a relayer to a Hedera Consensus Service topic, and each
-            entry is verified here against its EVM transaction.
+            adapter ships alongside it. Gated actions are mirrored by a relayer to a Hedera Consensus Service topic, and
+            each entry is verified here against its EVM transaction.
           </p>
         </div>
 
