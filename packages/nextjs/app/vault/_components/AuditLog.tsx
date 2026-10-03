@@ -2,40 +2,56 @@
 
 import { useEffect, useState } from "react";
 import { formatEther, formatUnits } from "viem";
-import { type AuditEntry, auditTopicFor, fetchAuditEntries, verifyAuditEntry } from "~~/utils/hcs/audit";
+import {
+  type AuditEntry,
+  type AuditVerification,
+  auditTopicFor,
+  fetchAuditEntries,
+  verifyAuditEntry,
+} from "~~/utils/hcs/audit";
 
 const explorer = (chainId: number) => `https://hashscan.io/${chainId === 295 ? "mainnet" : "testnet"}`;
 const consensusTime = (ts: string) => new Date(Number(ts.split(".")[0]) * 1000).toLocaleString();
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /**
- * Hedera Consensus Service audit log: every gated deposit/withdraw is appended to an HCS topic with
+ * Hedera Consensus Service audit log: an operator relays gated deposit/withdraw events to an HCS topic with
  * the EVM tx hash. Entries are read from the mirror node and each one is cross-checked against the
- * contract result, so the log can be trusted without trusting the relayer.
+ * contract result and emitter. This checks recorded entries, not relay completeness.
  */
 export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddress: string }) => {
   const topic = auditTopicFor(chainId);
   const [entries, setEntries] = useState<AuditEntry[]>();
-  const [verified, setVerified] = useState<Record<number, boolean>>({});
+  const [verified, setVerified] = useState<Record<number, AuditVerification>>({});
+  const [loadedScope, setLoadedScope] = useState<string>();
+  const scope = `${chainId}:${vaultAddress.toLowerCase()}:${topic?.topicId ?? ""}`;
   const [error, setError] = useState<string>();
   const sameVault = topic && topic.vault.toLowerCase() === vaultAddress.toLowerCase();
 
   useEffect(() => {
     if (!topic || !sameVault) return;
     let cancelled = false;
+    let loading = false;
     const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const list = await fetchAuditEntries(chainId, topic.topicId);
         if (cancelled) return;
         setEntries(list);
+        setLoadedScope(scope);
+        setVerified({});
         setError(undefined);
-        for (const entry of list) {
-          verifyAuditEntry(chainId, entry).then(ok => {
-            if (!cancelled) setVerified(v => ({ ...v, [entry.sequenceNumber]: ok }));
-          });
-        }
+        const results = await Promise.all(
+          list.map(
+            async entry => [entry.sequenceNumber, await verifyAuditEntry(chainId, vaultAddress, entry)] as const,
+          ),
+        );
+        if (!cancelled) setVerified(Object.fromEntries(results));
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
+      } finally {
+        loading = false;
       }
     };
     load();
@@ -44,7 +60,7 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
       cancelled = true;
       clearInterval(id);
     };
-  }, [chainId, topic, sameVault]);
+  }, [chainId, topic, sameVault, vaultAddress, scope]);
 
   if (!topic || !sameVault) {
     return (
@@ -68,8 +84,12 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
           Topic {topic.topicId}
         </a>
       </div>
+      <p className="text-xs text-base-content/70 m-0">
+        Operator-relayed records. Verified means this entry matches this vault on the selected network; it does not
+        prove that every event has been recorded. New wallet actions appear after the operator runs the relay.
+      </p>
       {error && <p className="text-error text-sm m-0">Mirror node: {error}</p>}
-      {!entries ? (
+      {!entries || loadedScope !== scope ? (
         <div className="h-16 rounded bg-base-200 animate-pulse" />
       ) : entries.length === 0 ? (
         <p className="text-sm m-0">No entries yet. Make a deposit, then run npm run hardhat:hcs:relay.</p>
@@ -104,13 +124,19 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
                     >
                       {short(e.txHash)}
                     </a>
-                    {verified[e.sequenceNumber] === undefined ? null : verified[e.sequenceNumber] ? (
-                      <span className="badge badge-success badge-sm ml-2" title="Matches the on-chain vault event">
+                    {verified[e.sequenceNumber] === undefined ? null : verified[e.sequenceNumber] === "verified" ? (
+                      <span
+                        className="badge badge-success badge-sm ml-2"
+                        title="Matches this vault’s event on the selected network; completeness is not proven"
+                      >
                         verified
                       </span>
                     ) : (
-                      <span className="badge badge-error badge-sm ml-2" title="Does not match the on-chain event">
-                        mismatch
+                      <span
+                        className={`badge ${verified[e.sequenceNumber] === "unknown" ? "badge-warning" : "badge-error"} badge-sm ml-2`}
+                        title="Mirror unavailable or entry does not match the selected vault"
+                      >
+                        {verified[e.sequenceNumber]}
                       </span>
                     )}
                   </td>
