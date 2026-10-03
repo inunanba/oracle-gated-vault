@@ -40,7 +40,8 @@
     "next:start": "npm run start -w @sh/nextjs --",
     "test": "npm run hardhat:test",
     "hardhat:hcs:relay": "npm run hcs:relay -w @sh/hardhat --",
-    "hardhat:verify:sourcify": "npm run verify:sourcify -w @sh/hardhat --"
+    "hardhat:verify:sourcify": "npm run verify:sourcify -w @sh/hardhat --",
+    "test:hcs-ui": "node --test packages/nextjs/tests/hcs-verification.test.mjs"
   },
   "packageManager": "npm@10.0.0",
   "devDependencies": {
@@ -50,6 +51,6 @@
   "engines": {
     "node": ">=20.18.3"
   },
-  "description": "Scaffold-HBAR template: an ERC-20 vault on Hedera gated by a live Pyth price feed (pull oracle)",
+  "description": "Scaffold-HBAR template: an ERC-20 vault gated by Chainlink/Pyth with a verifiable HCS audit trail",
   "license": "MIT"
 }

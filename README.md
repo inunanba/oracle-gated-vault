@@ -21,6 +21,16 @@ Use it as the starting point for anything that should only move money at a sane 
 
 ---
 
+## Two-minute reviewer path
+
+1. Open the [demo and public proof links above](#oracle-gated-vault--a-scaffold-hbar-template), then use the [reviewer walkthrough](docs/JUDGE_WALKTHROUGH.md).
+2. Scaffold and open `/vault`: price, gate and audit entries can be read without signing. Writing needs a testnet wallet funded with testnet HBAR.
+3. On a local chain, move the mock price outside the band: both deposit and withdrawal revert. Restore a fresh in-band observation: they succeed. The oracle controls execution, not just a price widget.
+4. Check the public deposit and HCS entry against the receipt. The UI checks chain, configured vault, emitter and event values; unavailable Mirror Node data is **unknown**.
+5. Run `npm run hardhat:test` and `npm run test:hcs-ui`, then lint/types/build. The HCS relay is operator-run and may lag; verified entries do not prove full coverage.
+
+---
+
 ## Contents
 
 - [Quick start](#quick-start)
@@ -115,12 +125,12 @@ flowchart LR
 | HCS audit log | `packages/hardhat/utils/hcsAudit.ts` (pure, tested), `hcsClient.ts` (SDK), `hcsRelay.ts` | message schema, topic creation, idempotent relay |
 | UI | `packages/nextjs/app/vault/` | `LiveFeedPrice`, `GateStatus`, `VaultActions`, `AuditLog` |
 
-**HCS audit log.** Hedera has no HCS precompile for contracts, so the log is written off-chain by a relayer, and the design does not require trusting it:
+**HCS audit log.** Hedera has no HCS precompile for contracts, so the log is written off-chain by a relayer, and readers check recorded entries independently (not completeness):
 
 - `deploy/02_create_hcs_audit_topic.ts` creates one topic per vault with the deployer key as **submit key** and **no admin key** (only the relayer can append; nobody can delete or edit).
 - Each message is one JSON chunk (`ogv.audit/1`: action, user, amount, gate price, vault, EVM tx hash, log index, block); HCS adds a consensus timestamp and a gap-free sequence number.
-- The relayer is idempotent (`txHash:logIndex` keys checked against the mirror node), so reruns never duplicate entries.
-- Readers verify instead of trusting: `/vault` fetches each referenced contract result from the mirror node and checks that the log at that index is the same event with the same user, amount and price.
+- The relayer is idempotent (`txHash:logIndex` keys checked against the mirror node), so a single relayer avoids duplicates on reruns after mirror-node reflection. Concurrent relayers or a crash before reflection can still duplicate messages; this is not an exactly-once guarantee.
+- Readers verify instead of trusting: `/vault` fetches each referenced contract result from the mirror node and checks that the log at that index was emitted by the configured vault on the selected network, with the same event, user, amount and price. Contract metadata resolves EVM alias and numeric addresses. Missing mirror data is shown as unknown, not a mismatch.
 
 Typical uses: compliance/audit trails for a treasury, a cheap event feed for off-chain services (HCS messages cost a fraction of a cent and need no indexer), or cross-chain attestations.
 
@@ -150,7 +160,7 @@ The vault only knows `IPriceOracle`, so swapping feeds is a new adapter plus `se
    npm run hardhat:verify:sourcify -- --network hederaTestnet
    ```
 
-Mainnet works the same with `--network hederaMainnet`; the mainnet Chainlink feed address is already in `config/oracle.ts`.
+Mainnet configuration is provided with `--network hederaMainnet`; the mainnet Chainlink feed address is in `config/oracle.ts`. This template has not been validated end to end on mainnet; do not treat testnet success as a production safety review.
 
 ## Deployed on testnet
 
@@ -270,7 +280,7 @@ AGENTS.md                             instructions for coding agents
 | `deposit(amount)` / `withdraw(amount)` | Use the price already stored in the oracle |
 | `depositWithPriceUpdate(amount, bytes[] update)` payable | Posts the update (pays `getUpdateFee`), refunds excess value, then deposits |
 | `withdrawWithPriceUpdate(amount, bytes[] update)` payable | Same for withdrawals |
-| `previewGate() → (price, updatedAt, fresh, inBand)` | Non-reverting status for UIs |
+| `previewGate() → (price, updatedAt, fresh, inBand)` | Status for UIs (oracle errors can revert) |
 | `requirePriceInBand() → price` | Reverting check used by every user action |
 | `getUpdateFee(bytes[] update)` | Fee in tinybars |
 | `setBand(min, max, maxStaleness)` / `setOracle(addr)` | `onlyOwner` |
@@ -304,7 +314,10 @@ Errors: `PriceOutOfBand(price, min, max)`, `StalePrice(updatedAt, maxStaleness)`
 
 ```bash
 npm run hardhat:test
+npm run test:hcs-ui
 ```
+
+The browser verifier regression tests cover wrong chain/vault/emitter, alias and numeric emitter forms, changed values and unavailable mirror responses.
 
 46 tests cover: in-band/out-of-band/stale deposits and withdrawals, withdrawals blocked while out of band, `previewGate`, owner-only admin and input validation; Chainlink decimals scaling (up and down), non-positive answers, incomplete rounds, missed heartbeat, band re-opening on a new round; Pyth exponent scaling, negative price and wide-confidence rejection, exact update fee, deposit-with-update in one transaction, refund of excess fee, insufficient fee, stale publish time, withdraw-with-update after the stored price went stale; HCS audit message encode/decode and validation, event extraction from real vault receipts (ignoring the token's own logs), idempotent relay ordering; demo token faucet. `npm run hardhat:e2e:testnet` is the live counterpart against the real Chainlink feed.
 
@@ -315,6 +328,9 @@ npm run hardhat:test
 - **Demo asset.** `HederaToken.faucet()` lets anyone mint 100 HTK so visitors can try the public deployment. Remove it for a real asset.
 - **Staleness and confidence are per-deployment choices.** Defaults (25 h for Chainlink, 60 s and 2% for Pyth) suit a demo, not every market. A single oracle is a single point of failure; production vaults often require two sources to agree.
 - **The HCS log is written by a relayer.** It can be late or incomplete if the relayer stops (rerun `hardhat:hcs:relay` to backfill), but it cannot forge entries undetected: the UI verifies each entry against the contract result. Only the submit key can append.
+- Supported assets must transfer the requested amount without rebasing or fee-on-transfer behavior. The demo HBAR/USD gate observes HBAR, not the value of HTK; a depeg use case needs the appropriate asset feed. Replacement adapters must return 8-decimal prices.
+- `previewGate` returns stale/out-of-band flags for valid oracle responses; oracle failures can still revert. Future oracle timestamps are currently treated as fresh, so trusted adapters and timestamp validation remain production requirements.
+- Relay completeness is not proven by entry verification or HCS sequence numbers. Run one operator-controlled relayer, wait for mirror reflection before retrying, and reconcile uncertain sends. Do not put the submit key in the browser.
 - Not audited.
 
 ## Troubleshooting

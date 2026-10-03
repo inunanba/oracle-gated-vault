@@ -4,15 +4,9 @@
   "version": "1.0.0",
   "create-scaffold-hbar": {
     "capabilities": {
-      "frontend": [
-        "nextjs-app"
-      ],
-      "solidityFramework": [
-        "hardhat"
-      ],
-      "packageManager": [
-        "npm"
-      ]
+      "frontend": ["nextjs-app"],
+      "solidityFramework": ["hardhat"],
+      "packageManager": ["npm"]
     },
     "defaults": {
       "frontend": "nextjs-app",
@@ -25,7 +19,7 @@
     "outro": {
       "sections": [
         {
-          "title": "Try it (no keys needed)",
+          "title": "Read-only preview and tests (no keys needed)",
           "steps": [
             {
               "label": "Unit tests",

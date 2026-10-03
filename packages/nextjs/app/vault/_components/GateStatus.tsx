@@ -8,7 +8,10 @@ const usd = (value?: bigint) => (value === undefined ? "…" : `$${formatUnits(v
 
 /** On-chain view of the gate: the price the vault will use, its age and the configured band. */
 export const GateStatus = () => {
-  const { data: gate } = useScaffoldReadContract({ contractName: "OracleGatedVault", functionName: "previewGate" });
+  const { data: gate, error: gateError } = useScaffoldReadContract({
+    contractName: "OracleGatedVault",
+    functionName: "previewGate",
+  });
   const { data: minPrice } = useScaffoldReadContract({ contractName: "OracleGatedVault", functionName: "minPrice" });
   const { data: maxPrice } = useScaffoldReadContract({ contractName: "OracleGatedVault", functionName: "maxPrice" });
   const { data: maxStaleness } = useScaffoldReadContract({
@@ -29,10 +32,20 @@ export const GateStatus = () => {
     <div className="bg-base-100 rounded-2xl shadow p-6 border border-base-300 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm uppercase tracking-wider text-base-content/60 m-0">Gate (on-chain)</p>
-        {gate && (
-          <span className={`badge ${open ? "badge-success" : "badge-warning"}`}>{open ? "OPEN" : "CLOSED"}</span>
+        {gateError ? (
+          <span className="badge badge-warning">UNKNOWN</span>
+        ) : (
+          gate && (
+            <span className={`badge ${open ? "badge-success" : "badge-warning"}`}>{open ? "OPEN" : "CLOSED"}</span>
+          )
         )}
       </div>
+      {gateError && (
+        <p className="text-sm text-warning m-0">
+          Oracle or network read unavailable. Previous readings do not confirm that the gate is currently open. Retry
+          when the feed and network are available.
+        </p>
+      )}
       <dl className="grid grid-cols-2 gap-y-1 text-sm">
         <dt className="text-base-content/60">Stored oracle price</dt>
         <dd className="font-mono">{usd(price)}</dd>
@@ -49,7 +62,7 @@ export const GateStatus = () => {
         <dt className="text-base-content/60">Total deposits</dt>
         <dd className="font-mono">{totalDeposits === undefined ? "…" : formatUnits(totalDeposits, 18)} HTK</dd>
       </dl>
-      {gate && !fresh && (
+      {!gateError && gate && !fresh && (
         <p className="text-xs text-base-content/70 m-0">
           The oracle has not published within the staleness window, so the vault is closed until the next round.
         </p>

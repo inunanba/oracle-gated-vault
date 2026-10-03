@@ -4,7 +4,7 @@ Briefing for coding agents (Cursor, Claude Code via `CLAUDE.md`, Codex) working 
 
 ## What this is
 
-**Oracle-gated Vault**, a Scaffold-HBAR template: an ERC-20 vault on Hedera that only accepts deposits and withdrawals while an oracle price is fresh and inside an owner-set band. On Hedera the default oracle is the Chainlink HBAR/USD Data Feed (push) via `ChainlinkPriceOracle`; `PythPriceOracle` is an opt-in pull adapter whose updates travel inside the user's transaction (`*WithPriceUpdate`). Every gated `Deposited`/`Withdrawn` event is also appended to a Hedera Consensus Service (HCS) topic (audit log) by an off-chain relayer using `@hashgraph/sdk`; the UI verifies each topic entry against the EVM contract result.
+**Oracle-gated Vault**, a Scaffold-HBAR template: an ERC-20 vault on Hedera that only accepts deposits and withdrawals while an oracle price is fresh and inside an owner-set band. On Hedera the default oracle is the Chainlink HBAR/USD Data Feed (push) via `ChainlinkPriceOracle`; `PythPriceOracle` is an opt-in pull adapter whose updates travel inside the user's transaction (`*WithPriceUpdate`). Every gated `Deposited`/`Withdrawn` event is also appended to a Hedera Consensus Service (HCS) topic (audit log) by an off-chain relayer using `@hashgraph/sdk`; the UI verifies each topic entry against the selected chain, configured vault, independently resolved log emitter, and EVM event values. Verification does not prove completeness.
 
 Stack: npm workspaces · `packages/hardhat` (Hardhat + hardhat-deploy, Solidity 0.8.28) · `packages/nextjs` (Next.js App Router, wagmi/viem, RainbowKit, DaisyUI). There is no Foundry package.
 
@@ -27,6 +27,7 @@ npm run hardhat:compile
 npm run hardhat:test                                  # offline, ~3 s
 npm run lint && npm run next:check-types              # must be clean
 npm run next:build
+node --test packages/nextjs/tests/hcs-verification.test.mjs
 
 npm run hardhat:chain                                 # local node (forks Hedera testnet)
 npm run hardhat:deploy -- --network localhost         # MockPriceOracle path
