@@ -37,6 +37,7 @@ npm run hardhat:deploy -- --network hederaTestnet     # ChainlinkPriceOracle on 
 ORACLE_PROVIDER=pyth PYTH_API_KEY=... npm run hardhat:deploy -- --network hederaTestnet   # Pyth instead
 npm run hardhat:e2e:testnet                           # live faucet/approve/deposit/withdraw + HCS audit, prints HashScan links
 npm run hardhat:hcs:relay                             # backfill vault events missing from the HCS topic (idempotent)
+npm run hardhat:verify:sourcify -- --network hederaTestnet   # Sourcify v2 (hardhat verify still uses the removed v1 API)
 ```
 
 Validate any contract change with `hardhat:test`; any frontend change with `next:check-types`, `next:lint` and `next:build`.

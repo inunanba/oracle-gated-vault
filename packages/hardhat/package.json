@@ -22,7 +22,8 @@
     "verify": "hardhat verify",
     "verify:testnet": "hardhat verify --network hederaTestnet",
     "verify:mainnet": "hardhat verify --network hederaMainnet",
-    "hcs:relay": "ts-node scripts/runHardhatWithPK.ts run scripts/hcsAuditRelay.ts --network hederaTestnet"
+    "hcs:relay": "ts-node scripts/runHardhatWithPK.ts run scripts/hcsAuditRelay.ts --network hederaTestnet",
+    "verify:sourcify": "hardhat run scripts/verifySourcify.ts"
   },
   "devDependencies": {
     "@ethersproject/abi": "~5.7.0",

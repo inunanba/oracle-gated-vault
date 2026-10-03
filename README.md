@@ -143,9 +143,9 @@ The vault only knows `IPriceOracle`, so swapping feeds is a new adapter plus `se
    npm run hardhat:e2e:testnet
    npm run hardhat:hcs:relay        # optional: backfill any vault event not yet on the topic
    ```
-5. **Verify source** on Sourcify (HashScan shows the verified badge):
+5. **Verify source** on Sourcify (HashScan shows the verified badge). No API key, no constructor args: the script reads the deployments and build info.
    ```bash
-   npm run hardhat:verify -- --network hederaTestnet <vault-address> <constructor args…>
+   npm run hardhat:verify:sourcify -- --network hederaTestnet
    ```
 
 Mainnet works the same with `--network hederaMainnet`; the mainnet Chainlink feed address is already in `config/oracle.ts`.
@@ -153,7 +153,7 @@ Mainnet works the same with `--network hederaMainnet`; the mainnet Chainlink fee
 ## Deployed on testnet
 
 <!-- TESTNET_PROOF:START -->
-Deployed 2026-10-03 11:20 UTC on Hedera testnet (chain 296). Oracle: Chainlink HBAR/USD `0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a`.
+Deployed 2026-10-03 11:20 UTC on Hedera testnet (chain 296). Oracle: Chainlink HBAR/USD `0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a`. All three contracts are **verified on Sourcify (exact match)**, so HashScan shows their source.
 
 | Contract | Address | Deploy |
 |---|---|---|
@@ -216,7 +216,7 @@ HCS audit topic [`0.0.10841114`](https://hashscan.io/testnet/topic/0.0.10841114)
 | `npm run hardhat:e2e:testnet` | Live faucet → approve → gated deposit → gated withdraw → HCS audit messages, prints HashScan links |
 | `npm run hardhat:hcs:relay` | Append every vault event missing from the HCS audit topic (idempotent) |
 | `npm run hardhat:account[:generate\|:import]` | Manage the encrypted deployer key |
-| `npm run hardhat:verify -- --network hederaTestnet <address> <args>` | Sourcify verification |
+| `npm run hardhat:verify:sourcify -- --network hederaTestnet` | Verify every deployed contract on Sourcify (v2 API) |
 | `npm run next:dev` / `next:build` / `next:serve` | Frontend |
 | `npm run lint` / `npm run format` / `npm run next:check-types` | Quality gates |
 
@@ -241,6 +241,7 @@ packages/
     deploy/02_create_hcs_audit_topic.ts     HCS topic (Hedera networks only)
     scripts/e2eTestnet.ts             live end-to-end run
     scripts/hcsAuditRelay.ts          idempotent HCS backfill
+    scripts/verifySourcify.ts         Sourcify v2 verification
     scripts/runHardhatWithPK.ts       decrypts the deployer key for deploy/run
     utils/hcsAudit.ts                 HCS message schema + relay logic (no network)
     utils/hcsClient.ts, hcsRelay.ts   Hedera SDK + mirror node side
@@ -287,6 +288,7 @@ Errors: `PriceOutOfBand(price, min, max)`, `StalePrice(updatedAt, maxStaleness)`
 - **Gas limit is charged.** Hedera charges at least 80% of the gas limit, so deploy, e2e and UI calls set explicit, measured limits instead of padded defaults.
 - **Hollow accounts.** Funding a fresh EVM address from the faucet creates a hollow account (no key yet); the first EVM transaction signed by that key (the deploy) completes it. The HCS step runs after the contracts for this reason, and resolves the `0.0.x` account id from the EVM address via the mirror node.
 - **One key, two APIs.** The same ECDSA key signs EVM transactions (relay) and native HCS transactions (`@hashgraph/sdk`, `PrivateKey.fromStringECDSA`). HCS messages are capped at 1024 bytes per chunk, so audit entries are compact single-chunk JSON.
+- **Sourcify v2.** Sourcify removed its v1 API, which `hardhat verify` (hardhat-verify) still calls (`API v1 is removed`). `scripts/verifySourcify.ts` uses `POST /v2/verify/{chainId}/{address}` with the Hardhat build info and the creation tx hash.
 - **Unit tests do not depend on the relay.** The Hardhat network forks Hedera only when `HEDERA_FORKING=true` (`hardhat:chain`), so `hardhat:test` is deterministic and offline. Feeds are exercised with `MockAggregatorV3` and Pyth's own `MockPyth`.
 
 ## Make it yours
@@ -323,6 +325,7 @@ npm run hardhat:test
 | `PriceOutOfBand` | HBAR/USD is outside the band; check `/vault` and adjust with `setBand` |
 | `ConfidenceTooWide` | Pyth path: confidence exceeds `maxConfidenceBps`; wait or redeploy the adapter with a wider limit |
 | `npm run hardhat:deploy --network hederaTestnet` deploys to the wrong network | npm swallows flags before `--`; use `npm run hardhat:deploy -- --network hederaTestnet` |
+| `hardhat verify` fails with `API v1 is removed` | Use `npm run hardhat:verify:sourcify -- --network hederaTestnet` |
 | Deploy fails with `INSUFFICIENT_PAYER_BALANCE` | Fund the deployer address from the faucet; `npm run hardhat:account` shows the balance |
 | `/vault` audit log says "No Hedera Consensus Service topic" | Deploy to a Hedera network (creates the topic), or check `HCS_AUDIT` was not `false`; the topic must belong to the current vault address |
 | `Mirror node: no Hedera account for 0x…` during deploy | The deployer address was never funded; fund it from the faucet |

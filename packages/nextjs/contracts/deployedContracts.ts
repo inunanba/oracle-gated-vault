@@ -111,9 +111,6 @@ const deployedContracts = {
       },
       deployedOnBlock: 41302251,
     },
-    HcsAuditTopic: {
-      inheritedFunctions: {},
-    },
     HederaToken: {
       address: "0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2",
       abi: [

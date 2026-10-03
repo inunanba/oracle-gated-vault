@@ -76,7 +76,7 @@ async function main() {
 
   console.log(`Vault balance of signer: ${ethers.formatEther(await vault.balances(signer.address))} HTK`);
 
-  const topic = readAuditTopic(network.name, chainId);
+  const topic = readAuditTopic(chainId);
   if (!topic || topic.vault.toLowerCase() !== vaultAddress.toLowerCase()) {
     console.log("HCS audit topic not found for this vault (deploy with HCS_AUDIT unset to create one); skipping.");
     return;

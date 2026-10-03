@@ -39,7 +39,8 @@
     "next:serve": "npm run serve -w @sh/nextjs --",
     "next:start": "npm run start -w @sh/nextjs --",
     "test": "npm run hardhat:test",
-    "hardhat:hcs:relay": "npm run hcs:relay -w @sh/hardhat --"
+    "hardhat:hcs:relay": "npm run hcs:relay -w @sh/hardhat --",
+    "hardhat:verify:sourcify": "npm run verify:sourcify -w @sh/hardhat --"
   },
   "packageManager": "npm@10.0.0",
   "devDependencies": {

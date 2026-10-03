@@ -1,4 +1,4 @@
-import { deployments, ethers, network } from "hardhat";
+import { deployments, ethers } from "hardhat";
 
 import { hashscanTopicUrl, readAuditTopic } from "../utils/hcsClient";
 import { relayToTopic } from "../utils/hcsRelay";
@@ -13,8 +13,8 @@ async function main() {
   const chainId = Number((await ethers.provider.getNetwork()).chainId);
   const [signer] = await ethers.getSigners();
   const vault = (await deployments.get("OracleGatedVault")).address;
-  const topic = readAuditTopic(network.name, chainId);
-  if (!topic) throw new Error(`No HCS audit topic for ${network.name}; run the deploy first.`);
+  const topic = readAuditTopic(chainId);
+  if (!topic) throw new Error(`No HCS audit topic for chain ${chainId}; run the deploy first.`);
 
   const relayed = await relayToTopic({ chainId, topicId: topic.topicId, operatorEvm: signer.address, vault });
   for (const { event, sequenceNumber } of relayed) {

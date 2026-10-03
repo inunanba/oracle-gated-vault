@@ -93,29 +93,21 @@ export async function fetchLoggedAuditEvents(chainId: number, topicId: string): 
   return out;
 }
 
-/** Topic ids per network live next to the hardhat-deploy artifacts and are mirrored into the Next.js app. */
+/**
+ * Topic ids per chain id live in packages/nextjs/contracts/hcsAuditTopics.json (committed, read by the
+ * /vault page). Not under deployments/: hardhat-deploy would treat the file as a contract deployment.
+ */
 export type AuditTopicRecord = { topicId: string; vault: string; createdAt: string };
 
-const deploymentsFile = (networkName: string) =>
-  path.join(__dirname, "..", "deployments", networkName, "HcsAuditTopic.json");
-const NEXT_FILE = path.join(__dirname, "..", "..", "nextjs", "contracts", "hcsAuditTopics.json");
+const TOPICS_FILE = path.join(__dirname, "..", "..", "nextjs", "contracts", "hcsAuditTopics.json");
 
-/** Topic for this network: the local deployments record first, then the committed Next.js registry. */
-export function readAuditTopic(networkName: string, chainId: number): AuditTopicRecord | null {
-  const file = deploymentsFile(networkName);
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf8")) as AuditTopicRecord;
-  if (!fs.existsSync(NEXT_FILE)) return null;
-  return (JSON.parse(fs.readFileSync(NEXT_FILE, "utf8")) as Record<string, AuditTopicRecord>)[String(chainId)] ?? null;
-}
+const readTopics = (): Record<string, AuditTopicRecord> =>
+  fs.existsSync(TOPICS_FILE) ? JSON.parse(fs.readFileSync(TOPICS_FILE, "utf8")) : {};
 
-export function saveAuditTopic(networkName: string, chainId: number, record: AuditTopicRecord) {
-  const file = deploymentsFile(networkName);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(record, null, 2) + "\n");
+export const readAuditTopic = (chainId: number): AuditTopicRecord | null => readTopics()[String(chainId)] ?? null;
 
-  const current: Record<string, AuditTopicRecord> = fs.existsSync(NEXT_FILE)
-    ? JSON.parse(fs.readFileSync(NEXT_FILE, "utf8"))
-    : {};
-  current[String(chainId)] = record;
-  fs.writeFileSync(NEXT_FILE, JSON.stringify(current, null, 2) + "\n");
+export function saveAuditTopic(chainId: number, record: AuditTopicRecord) {
+  const topics = readTopics();
+  topics[String(chainId)] = record;
+  fs.writeFileSync(TOPICS_FILE, JSON.stringify(topics, null, 2) + "\n");
 }

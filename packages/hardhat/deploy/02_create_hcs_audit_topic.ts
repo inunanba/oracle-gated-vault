@@ -10,8 +10,7 @@ import { createAuditTopic, hashscanTopicUrl, operatorClient, readAuditTopic, sav
  * - Hedera networks only (HCS has no local-chain equivalent; set HCS_AUDIT=false to skip).
  * - Submit key = the deployer key, no admin key: only the relayer can append, nobody can delete.
  * - One topic per vault deployment; reruns are no-ops while the vault address is unchanged.
- * - The topic id is saved to deployments/<network>/HcsAuditTopic.json and
- *   packages/nextjs/contracts/hcsAuditTopics.json (read by the /vault page).
+ * - The topic id is saved to packages/nextjs/contracts/hcsAuditTopics.json (read by the /vault page).
  *
  * Messages are appended by `npm run hardhat:e2e:testnet` and `npm run hardhat:hcs:relay`.
  */
@@ -23,7 +22,7 @@ const createHcsAuditTopic: DeployFunction = async function (hre: HardhatRuntimeE
   }
 
   const vault = (await hre.deployments.get("OracleGatedVault")).address.toLowerCase();
-  const existing = readAuditTopic(hre.network.name, chainId);
+  const existing = readAuditTopic(chainId);
   if (existing && existing.vault.toLowerCase() === vault) {
     console.log(`HCS audit topic: reusing ${existing.topicId} (${hashscanTopicUrl(chainId, existing.topicId)})`);
     return;
@@ -33,7 +32,7 @@ const createHcsAuditTopic: DeployFunction = async function (hre: HardhatRuntimeE
   const { client, key } = await operatorClient(chainId, deployer);
   try {
     const topicId = await createAuditTopic(client, key, `Oracle-gated Vault audit log ${vault}`);
-    saveAuditTopic(hre.network.name, chainId, { topicId, vault, createdAt: new Date().toISOString() });
+    saveAuditTopic(chainId, { topicId, vault, createdAt: new Date().toISOString() });
     console.log(`HCS audit topic created: ${topicId}`);
     console.log(`  ${hashscanTopicUrl(chainId, topicId)}`);
   } finally {
