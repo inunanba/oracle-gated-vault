@@ -1,6 +1,9 @@
 import { deployments, ethers, network } from "hardhat";
 
+import { type AuditEvent, auditEventsFromReceipt } from "../utils/hcsAudit";
 import { hashscanTxUrl } from "../utils/hashscan";
+import { hashscanTopicUrl, readAuditTopic } from "../utils/hcsClient";
+import { relayToTopic } from "../utils/hcsRelay";
 import { TINYBAR_TO_WEIBAR, fetchPriceUpdate } from "../utils/hermes";
 
 /**
@@ -9,6 +12,7 @@ import { TINYBAR_TO_WEIBAR, fetchPriceUpdate } from "../utils/hermes";
  *   1. read the gate and the oracle price
  *   2. mint demo HTK from the faucet if needed, approve the vault
  *   3. deposit, then withdraw half
+ *   4. append both vault events to the HCS audit topic (Hedera Consensus Service)
  * With a Pyth oracle (ORACLE_PROVIDER=pyth at deploy time) steps 3 post a signed Hermes update in
  * the same transaction; that needs PYTH_API_KEY.
  *
@@ -32,9 +36,14 @@ async function main() {
   const age = Math.floor(Date.now() / 1000) - Number(updatedAt);
   console.log(`Oracle price $${ethers.formatUnits(price, 8)}, ${age}s old, fresh=${fresh}, inBand=${inBand}`);
 
-  const step = async (label: string, send: () => Promise<{ hash: string; wait: () => Promise<unknown> }>) => {
+  const auditEvents: AuditEvent[] = [];
+  const step = async (
+    label: string,
+    send: () => Promise<{ hash: string; wait: () => Promise<import("ethers").TransactionReceipt | null> }>,
+  ) => {
     const tx = await send();
-    await tx.wait();
+    const receipt = await tx.wait();
+    if (receipt) auditEvents.push(...auditEventsFromReceipt(receipt, vaultAddress, chainId));
     console.log(`✅ ${label}: ${hashscanTxUrl(chainId, tx.hash)}`);
     return tx.hash;
   };
@@ -66,6 +75,25 @@ async function main() {
   await gated("withdraw", amount / 2n);
 
   console.log(`Vault balance of signer: ${ethers.formatEther(await vault.balances(signer.address))} HTK`);
+
+  const topic = readAuditTopic(network.name, chainId);
+  if (!topic || topic.vault.toLowerCase() !== vaultAddress.toLowerCase()) {
+    console.log("HCS audit topic not found for this vault (deploy with HCS_AUDIT unset to create one); skipping.");
+    return;
+  }
+  const relayed = await relayToTopic({
+    chainId,
+    topicId: topic.topicId,
+    operatorEvm: signer.address,
+    vault: vaultAddress,
+    events: auditEvents,
+  });
+  for (const { event, sequenceNumber } of relayed) {
+    console.log(
+      `📝 HCS audit #${sequenceNumber}: ${event.kind} ${ethers.formatEther(event.amount)} HTK @ $${ethers.formatUnits(event.price, 8)}`,
+    );
+  }
+  console.log(`✅ HCS audit topic ${topic.topicId}: ${hashscanTopicUrl(chainId, topic.topicId)}`);
 }
 
 main().catch(error => {

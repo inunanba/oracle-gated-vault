@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AuditLog } from "./_components/AuditLog";
 import { GateStatus } from "./_components/GateStatus";
 import { LiveFeedPrice } from "./_components/LiveFeedPrice";
 import { VaultActions } from "./_components/VaultActions";
@@ -23,7 +24,8 @@ const VaultPage: NextPage = () => {
           <p className="text-base-content/80 m-0">
             Deposits and withdrawals only go through while the HBAR/USD oracle price is fresh and inside the
             vault&apos;s band. On Hedera the vault reads the Chainlink Data Feed through an adapter; a Pyth pull-oracle
-            adapter ships alongside it.
+            adapter ships alongside it. Every gated action is also appended to a Hedera Consensus Service topic as a
+            public audit log.
           </p>
         </div>
 
@@ -37,6 +39,7 @@ const VaultPage: NextPage = () => {
         ) : vault ? (
           <>
             <VaultActions vaultAddress={vault.address} />
+            <AuditLog chainId={targetNetwork.id} vaultAddress={vault.address} />
             {explorer && (
               <p className="text-sm m-0">
                 Vault on HashScan:{" "}

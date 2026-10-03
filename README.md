@@ -1,6 +1,6 @@
 # Oracle-gated Vault — a Scaffold-HBAR template
 
-An ERC-20 vault on Hedera whose **deposits and withdrawals only open while a live oracle price is fresh and inside a configured band**. On Hedera it reads the **Chainlink HBAR/USD Data Feed** through a small adapter; a **Pyth pull-oracle adapter** (post a signed Hermes update and act on it in the same transaction) ships alongside it behind the same interface.
+An ERC-20 vault on Hedera whose **deposits and withdrawals only open while a live oracle price is fresh and inside a configured band**. On Hedera it reads the **Chainlink HBAR/USD Data Feed** through a small adapter; a **Pyth pull-oracle adapter** (post a signed Hermes update and act on it in the same transaction) ships alongside it behind the same interface. Every gated deposit and withdrawal is also appended to a **Hedera Consensus Service (HCS) topic**, a public, consensus-timestamped audit log that the UI cross-checks against the EVM transactions.
 
 ```bash
 npm create scaffold-hbar@latest -- --template inunanba/oracle-gated-vault
@@ -11,7 +11,7 @@ Use it as the starting point for anything that should only move money at a sane 
 | | |
 |---|---|
 | Ecosystem integration | **Chainlink Data Feeds** on Hedera (HBAR/USD, push) by default · **Pyth** (HBAR/USD, pull via Hermes) as an alternative adapter |
-| Hedera service | Solidity smart contracts on Hedera (HSCS) via JSON-RPC relay; HashScan + Mirror Node for proof |
+| Hedera services | **Smart Contract Service** (Solidity via JSON-RPC relay) · **Consensus Service** (HCS audit topic via `@hashgraph/sdk`) · Mirror Node REST (topic + contract-result reads) · HashScan |
 | Stack | Next.js App Router · Hardhat + hardhat-deploy · wagmi/viem · npm workspaces · Node ≥ 20.18.3 |
 | Licence | MIT |
 
@@ -48,7 +48,7 @@ npm create scaffold-hbar@latest -- --template inunanba/oracle-gated-vault
 cd <your-project>
 
 npm run hardhat:compile
-npm run hardhat:test          # 41 unit tests, in-memory chain, ~3 s
+npm run hardhat:test          # 46 unit tests, in-memory chain, ~3 s
 npm run next:dev              # http://localhost:3000/vault
 ```
 
@@ -66,10 +66,11 @@ Locally the vault reads `MockPriceOracle`. Open **Debug Contracts**, call `MockP
 
 ## What you get
 
-- `/vault` — live Chainlink HBAR/USD price read straight from Hedera, on-chain gate status (oracle price, age, band, OPEN/CLOSED, total deposits), and a faucet/approve/deposit/withdraw panel. Shows deploy instructions when no vault exists on the selected network.
+- `/vault` — live Chainlink HBAR/USD price read straight from Hedera, on-chain gate status (oracle price, age, band, OPEN/CLOSED, total deposits), a faucet/approve/deposit/withdraw panel, and the **HCS audit log** (latest topic messages from the mirror node, each marked *verified* after it is matched to the vault event in the referenced EVM transaction). Shows deploy instructions when no vault exists on the selected network.
 - `/debug` — Scaffold-HBAR's contract debugger for every deployed contract.
 - `/blockexplorer` — local block explorer for the Hardhat chain.
-- `packages/hardhat/scripts/e2eTestnet.ts` — runs faucet → approve → gated deposit → gated withdraw on testnet and prints a HashScan link for every transaction (with Pyth it posts a Hermes update in each gated call).
+- `packages/hardhat/scripts/e2eTestnet.ts` — runs faucet → approve → gated deposit → gated withdraw on testnet and prints a HashScan link for every transaction (with Pyth it posts a Hermes update in each gated call), then appends both vault events to the HCS audit topic.
+- `packages/hardhat/scripts/hcsAuditRelay.ts` — idempotent backfill: reads every `Deposited`/`Withdrawn` event from the mirror node and appends the ones missing from the topic (safe to rerun or schedule).
 
 ## How it works
 
@@ -83,6 +84,9 @@ flowchart LR
     V -->|fresh and in band?| G{Gate}
     G -->|yes| T[move ERC-20, emit Deposited / Withdrawn with price]
     G -->|no| R[revert StalePrice / PriceOutOfBand]
+    T -.->|event + tx hash| RL[relay: e2e / hcs:relay]
+    RL -->|TopicMessageSubmit| H[(HCS audit topic)]
+    H -->|mirror node| UI[/vault audit log: verify vs. contract result/]
 ```
 
 **Why the oracle is load-bearing.** Every state-changing user path calls `requirePriceInBand()`. With no fresh, in-band price the vault is closed, both ways, and each `Deposited` / `Withdrawn` event records the price it was admitted at. Remove the oracle and the template has no reason to exist.
@@ -106,7 +110,17 @@ flowchart LR
 | Pyth adapter | `contracts/oracle/PythPriceOracle.sol` | exponent normalisation, rejects price ≤ 0 and confidence > `maxConfidenceBps`, exact-fee updates |
 | Local oracle | `contracts/oracle/MockPriceOracle.sol` | owner-set price for offline development |
 | Network config | `packages/hardhat/config/oracle.ts` | feed addresses, provider selection, band defaults |
-| UI | `packages/nextjs/app/vault/` | `LiveFeedPrice`, `GateStatus`, `VaultActions` |
+| HCS audit log | `packages/hardhat/utils/hcsAudit.ts` (pure, tested), `hcsClient.ts` (SDK), `hcsRelay.ts` | message schema, topic creation, idempotent relay |
+| UI | `packages/nextjs/app/vault/` | `LiveFeedPrice`, `GateStatus`, `VaultActions`, `AuditLog` |
+
+**HCS audit log.** Hedera has no HCS precompile for contracts, so the log is written off-chain by a relayer, and the design does not require trusting it:
+
+- `deploy/02_create_hcs_audit_topic.ts` creates one topic per vault with the deployer key as **submit key** and **no admin key** (only the relayer can append; nobody can delete or edit).
+- Each message is one JSON chunk (`ogv.audit/1`: action, user, amount, gate price, vault, EVM tx hash, log index, block); HCS adds a consensus timestamp and a gap-free sequence number.
+- The relayer is idempotent (`txHash:logIndex` keys checked against the mirror node), so reruns never duplicate entries.
+- Readers verify instead of trusting: `/vault` fetches each referenced contract result from the mirror node and checks that the log at that index is the same event with the same user, amount and price.
+
+Typical uses: compliance/audit trails for a treasury, a cheap event feed for off-chain services (HCS messages cost a fraction of a cent and need no indexer), or cross-chain attestations.
 
 The vault only knows `IPriceOracle`, so swapping feeds is a new adapter plus `setOracle(adapter)` — no vault changes. See [docs/ORACLE_ADAPTERS.md](docs/ORACLE_ADAPTERS.md).
 
@@ -118,15 +132,16 @@ The vault only knows `IPriceOracle`, so swapping feeds is a new adapter plus `se
    npm run hardhat:account               # shows the EVM address and balance
    ```
 2. **Fund it**: paste the EVM address into the [Hedera faucet](https://portal.hedera.com/faucet). The first transfer auto-creates a Hedera account for that address. A full deploy + e2e run costs about 3–4 testnet HBAR.
-3. **Deploy** (HederaToken, ChainlinkPriceOracle on the live HBAR/USD feed, OracleGatedVault):
+3. **Deploy** (HederaToken, ChainlinkPriceOracle on the live HBAR/USD feed, OracleGatedVault, HCS audit topic):
    ```bash
    npm run hardhat:deploy -- --network hederaTestnet
    ```
    The script prints HashScan links and regenerates `packages/nextjs/contracts/deployedContracts.ts`, so the frontend picks the new addresses up automatically.
    For the Pyth adapter instead: `ORACLE_PROVIDER=pyth PYTH_API_KEY=... npm run hardhat:deploy -- --network hederaTestnet`.
-4. **Prove it end to end** (faucet, approve, gated deposit and withdraw, HashScan link per step):
+4. **Prove it end to end** (faucet, approve, gated deposit and withdraw, HashScan link per step, then both events appended to the HCS topic):
    ```bash
    npm run hardhat:e2e:testnet
+   npm run hardhat:hcs:relay        # optional: backfill any vault event not yet on the topic
    ```
 5. **Verify source** on Sourcify (HashScan shows the verified badge):
    ```bash
@@ -159,6 +174,8 @@ _Pending: filled in by the testnet deploy run (contract addresses and HashScan l
 | `VAULT_MIN_PRICE` / `VAULT_MAX_PRICE` | `1000000` / `100000000` on Hedera ($0.01 / $1.00) | Band, 8 decimals |
 | `VAULT_MAX_STALENESS` | `90000` Chainlink, `60` Pyth, `3600` local | Seconds an oracle price stays valid |
 | `E2E_AMOUNT` | `10` | HTK amount used by `hardhat:e2e:testnet` |
+| `HCS_AUDIT` | `true` | `false` skips creating the HCS audit topic on Hedera deploys |
+| `HEDERA_OPERATOR_ID` | resolved from the mirror node | Hedera account id (0.0.x) of the deployer, for SDK (HCS) transactions |
 
 `packages/nextjs/.env` (copy from `.env.example`):
 
@@ -174,7 +191,8 @@ _Pending: filled in by the testnet deploy run (contract addresses and HashScan l
 | `npm run hardhat:compile` / `hardhat:test` / `hardhat:test:gas` | Compile, unit tests, tests with gas report |
 | `npm run hardhat:chain` | Local Hardhat node forking Hedera testnet (HTS emulation via `@hashgraph/system-contracts-forking`) |
 | `npm run hardhat:deploy -- --network <localhost\|hederaTestnet\|hederaMainnet>` | Deploy and regenerate frontend ABIs |
-| `npm run hardhat:e2e:testnet` | Live faucet → approve → gated deposit → gated withdraw, prints HashScan links |
+| `npm run hardhat:e2e:testnet` | Live faucet → approve → gated deposit → gated withdraw → HCS audit messages, prints HashScan links |
+| `npm run hardhat:hcs:relay` | Append every vault event missing from the HCS audit topic (idempotent) |
 | `npm run hardhat:account[:generate\|:import]` | Manage the encrypted deployer key |
 | `npm run hardhat:verify -- --network hederaTestnet <address> <args>` | Sourcify verification |
 | `npm run next:dev` / `next:build` / `next:serve` | Frontend |
@@ -198,12 +216,18 @@ packages/
     config/oracle.ts                  feed addresses, provider, band defaults
     deploy/00_deploy_hedera_token.ts
     deploy/01_deploy_oracle_gated_vault.ts  Chainlink/Pyth on Hedera, mock elsewhere
+    deploy/02_create_hcs_audit_topic.ts     HCS topic (Hedera networks only)
     scripts/e2eTestnet.ts             live end-to-end run
+    scripts/hcsAuditRelay.ts          idempotent HCS backfill
     scripts/runHardhatWithPK.ts       decrypts the deployer key for deploy/run
+    utils/hcsAudit.ts                 HCS message schema + relay logic (no network)
+    utils/hcsClient.ts, hcsRelay.ts   Hedera SDK + mirror node side
     utils/hermes.ts, utils/hashscan.ts
-    test/                             vault, Chainlink, Pyth and token tests
+    test/                             vault, Chainlink, Pyth, HCS audit and token tests
   nextjs/
-    app/vault/                        page + LiveFeedPrice, GateStatus, VaultActions
+    app/vault/                        page + LiveFeedPrice, GateStatus, VaultActions, AuditLog
+    utils/hcs/audit.ts                topic reader + on-chain cross-check
+    contracts/hcsAuditTopics.json     topic id per chain, written by deploy
     utils/oracle/chainlink.ts         feed addresses + ABI
     contracts/deployedContracts.ts    generated by deploy
 docs/
@@ -239,7 +263,8 @@ Errors: `PriceOutOfBand(price, min, max)`, `StalePrice(updatedAt, maxStaleness)`
 - **Testnet feed cadence.** Chainlink testnet feeds publish on deviation or heartbeat, so `maxStaleness` defaults to 25 h for the push path. `previewGate()` reports stale prices instead of reverting so the UI can explain why the vault is closed.
 - **Pyth on Hedera after the Aug 2026 Pyth Core upgrade.** Hermes now needs an API key, and the HBAR/USD slot of the Hedera Pyth contract has not been refreshed since 24 Aug 2026. That is why Chainlink is the default and the Pyth adapter is opt-in.
 - **Gas limit is charged.** Hedera charges at least 80% of the gas limit, so deploy, e2e and UI calls set explicit, measured limits instead of padded defaults.
-- **Hollow accounts.** Funding a fresh EVM address from the faucet creates a hollow account; the first transaction signed by that key (the deploy) completes it. No Hedera SDK step is needed.
+- **Hollow accounts.** Funding a fresh EVM address from the faucet creates a hollow account (no key yet); the first EVM transaction signed by that key (the deploy) completes it. The HCS step runs after the contracts for this reason, and resolves the `0.0.x` account id from the EVM address via the mirror node.
+- **One key, two APIs.** The same ECDSA key signs EVM transactions (relay) and native HCS transactions (`@hashgraph/sdk`, `PrivateKey.fromStringECDSA`). HCS messages are capped at 1024 bytes per chunk, so audit entries are compact single-chunk JSON.
 - **Unit tests do not depend on the relay.** The Hardhat network forks Hedera only when `HEDERA_FORKING=true` (`hardhat:chain`), so `hardhat:test` is deterministic and offline. Feeds are exercised with `MockAggregatorV3` and Pyth's own `MockPyth`.
 
 ## Make it yours
@@ -255,7 +280,7 @@ Errors: `PriceOutOfBand(price, min, max)`, `StalePrice(updatedAt, maxStaleness)`
 npm run hardhat:test
 ```
 
-41 tests cover: in-band/out-of-band/stale deposits and withdrawals, withdrawals blocked while out of band, `previewGate`, owner-only admin and input validation; Chainlink decimals scaling (up and down), non-positive answers, incomplete rounds, missed heartbeat, band re-opening on a new round; Pyth exponent scaling, negative price and wide-confidence rejection, exact update fee, deposit-with-update in one transaction, refund of excess fee, insufficient fee, stale publish time, withdraw-with-update after the stored price went stale; demo token faucet. `npm run hardhat:e2e:testnet` is the live counterpart against the real Chainlink feed.
+46 tests cover: in-band/out-of-band/stale deposits and withdrawals, withdrawals blocked while out of band, `previewGate`, owner-only admin and input validation; Chainlink decimals scaling (up and down), non-positive answers, incomplete rounds, missed heartbeat, band re-opening on a new round; Pyth exponent scaling, negative price and wide-confidence rejection, exact update fee, deposit-with-update in one transaction, refund of excess fee, insufficient fee, stale publish time, withdraw-with-update after the stored price went stale; HCS audit message encode/decode and validation, event extraction from real vault receipts (ignoring the token's own logs), idempotent relay ordering; demo token faucet. `npm run hardhat:e2e:testnet` is the live counterpart against the real Chainlink feed.
 
 ## Security model and limitations
 
@@ -263,6 +288,7 @@ npm run hardhat:test
 - **The owner can change the band and the oracle.** Put the vault behind a multisig/timelock in production.
 - **Demo asset.** `HederaToken.faucet()` lets anyone mint 100 HTK so visitors can try the public deployment. Remove it for a real asset.
 - **Staleness and confidence are per-deployment choices.** Defaults (25 h for Chainlink, 60 s and 2% for Pyth) suit a demo, not every market. A single oracle is a single point of failure; production vaults often require two sources to agree.
+- **The HCS log is written by a relayer.** It can be late or incomplete if the relayer stops (rerun `hardhat:hcs:relay` to backfill), but it cannot forge entries undetected: the UI verifies each entry against the contract result. Only the submit key can append.
 - Not audited.
 
 ## Troubleshooting
@@ -276,6 +302,8 @@ npm run hardhat:test
 | `ConfidenceTooWide` | Pyth path: confidence exceeds `maxConfidenceBps`; wait or redeploy the adapter with a wider limit |
 | `npm run hardhat:deploy --network hederaTestnet` deploys to the wrong network | npm swallows flags before `--`; use `npm run hardhat:deploy -- --network hederaTestnet` |
 | Deploy fails with `INSUFFICIENT_PAYER_BALANCE` | Fund the deployer address from the faucet; `npm run hardhat:account` shows the balance |
+| `/vault` audit log says "No Hedera Consensus Service topic" | Deploy to a Hedera network (creates the topic), or check `HCS_AUDIT` was not `false`; the topic must belong to the current vault address |
+| `Mirror node: no Hedera account for 0x…` during deploy | The deployer address was never funded; fund it from the faucet |
 | `/vault` says "No vault deployed" | Select the network you deployed to in the wallet menu, or redeploy so `deployedContracts.ts` is regenerated |
 
 ## Working with AI agents

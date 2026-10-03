@@ -1,6 +1,6 @@
 {
   "name": "oracle-gated-vault",
-  "description": "ERC-20 vault on Hedera that only opens while a live oracle price is fresh and in band: Chainlink HBAR/USD Data Feed by default, Pyth pull-oracle adapter included.",
+  "description": "ERC-20 vault on Hedera that only opens while a live oracle price is fresh and in band (Chainlink HBAR/USD Data Feed by default, Pyth pull adapter included), with every gated action logged to a Hedera Consensus Service audit topic.",
   "version": "1.0.0",
   "create-scaffold-hbar": {
     "capabilities": {
@@ -56,7 +56,7 @@
               "command": "npm run hardhat:deploy -- --network hederaTestnet"
             },
             {
-              "label": "Live faucet/approve/deposit/withdraw with HashScan links",
+              "label": "Live faucet/approve/deposit/withdraw + HCS audit log, with HashScan links",
               "command": "npm run hardhat:e2e:testnet"
             },
             {

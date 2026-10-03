@@ -115,7 +115,7 @@ const Home: NextPage = () => {
                 <div>
                   <p className="m-0 font-medium">Try the vault</p>
                   <Link href="/vault" className="link link-primary text-xs">
-                    /vault — live Chainlink price, gate status, deposit &amp; withdraw
+                    /vault — live Chainlink price, gate status, deposit &amp; withdraw, HCS audit log
                   </Link>
                 </div>
               </div>
