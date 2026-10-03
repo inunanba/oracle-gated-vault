@@ -17,6 +17,8 @@ Use it as the starting point for anything that should only move money at a sane 
 
 ![Vault page](docs/screenshots/vault.png)
 
+**Demo video** (silent, captioned, under 2 min): [oracle-gated-vault-demo.mp4](https://github.com/inunanba/oracle-gated-vault/releases/download/v1.0.0/oracle-gated-vault-demo.mp4) · **Live on testnet:** [vault](https://hashscan.io/testnet/contract/0x1a6002485B5729088023CAdCd378CA22f28fC287) · [gated deposit](https://hashscan.io/testnet/transaction/0x4bc6c42863e896de44215d9538da59d2211005eb1e4b586fdeda1f5356a288b0) · [HCS audit topic](https://hashscan.io/testnet/topic/0.0.10841114)
+
 ---
 
 ## Contents
