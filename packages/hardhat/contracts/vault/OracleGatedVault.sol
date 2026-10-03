@@ -18,6 +18,18 @@ import { IUpdatablePriceOracle } from "../oracle/IUpdatablePriceOracle.sol";
 contract OracleGatedVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    uint8 public constant PRICE_DECIMALS = 8;
+
+    struct AdmissionPolicy {
+        uint256 price;
+        uint256 observedAt;
+        address source;
+        uint256 minimum;
+        uint256 maximum;
+        uint256 freshnessWindow;
+        uint256 evaluatedAt;
+    }
+
     IERC20 public immutable asset;
     IPriceOracle public oracle;
 
@@ -30,12 +42,26 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
 
     event Deposited(address indexed user, uint256 amount, uint256 price);
     event Withdrawn(address indexed user, uint256 amount, uint256 price);
+    /// @notice Immediately follows the matching action event, with the policy used before any token callback.
+    event AdmissionRecorded(
+        address indexed user,
+        bool depositAction,
+        address indexed source,
+        uint256 price,
+        uint256 observedAt,
+        uint256 minimum,
+        uint256 maximum,
+        uint256 freshnessWindow,
+        uint256 evaluatedAt
+    );
     event OracleUpdated(address indexed oracle);
     event BandUpdated(uint256 minPrice, uint256 maxPrice, uint256 maxStaleness);
     event PriceRefreshed(address indexed caller, uint256 feePaid);
 
     error PriceOutOfBand(uint256 price, uint256 minPrice, uint256 maxPrice);
     error StalePrice(uint256 updatedAt, uint256 maxStaleness);
+    error InvalidOracleDecimals(uint8 actual);
+    error UnsupportedTransfer(uint256 expected, uint256 received);
     error ZeroAmount();
     error ZeroAddress();
     error InvalidBand(uint256 minPrice, uint256 maxPrice);
@@ -54,6 +80,7 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
         if (asset_ == address(0) || oracle_ == address(0)) revert ZeroAddress();
         if (minPrice_ > maxPrice_) revert InvalidBand(minPrice_, maxPrice_);
         asset = IERC20(asset_);
+        _validateOracle(oracle_);
         oracle = IPriceOracle(oracle_);
         minPrice = minPrice_;
         maxPrice = maxPrice_;
@@ -66,6 +93,7 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
 
     function setOracle(address oracle_) external onlyOwner {
         if (oracle_ == address(0)) revert ZeroAddress();
+        _validateOracle(oracle_);
         oracle = IPriceOracle(oracle_);
         emit OracleUpdated(oracle_);
     }
@@ -82,7 +110,7 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
     // Views
     // ---------------------------------------------------------------------
 
-    /// @notice Non-reverting gate status for frontends and scripts.
+    /// @notice Gate status; propagates oracle failures so callers can distinguish unavailable from closed.
     function previewGate() external view returns (uint256 price, uint256 updatedAt, bool fresh, bool inBand) {
         (price, updatedAt) = oracle.latestPrice();
         fresh = _isFresh(updatedAt);
@@ -96,10 +124,7 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
 
     /// @notice Reverts unless the oracle price is fresh and in band.
     function requirePriceInBand() public view returns (uint256 price) {
-        uint256 updatedAt;
-        (price, updatedAt) = oracle.latestPrice();
-        if (!_isFresh(updatedAt)) revert StalePrice(updatedAt, maxStaleness);
-        if (price < minPrice || price > maxPrice) revert PriceOutOfBand(price, minPrice, maxPrice);
+        return _checkedPolicy().price;
     }
 
     // ---------------------------------------------------------------------
@@ -134,22 +159,28 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
 
     function _deposit(uint256 amount) private {
         if (amount == 0) revert ZeroAmount();
-        uint256 price = requirePriceInBand();
+        AdmissionPolicy memory policy = _checkedPolicy();
         balances[msg.sender] += amount;
         totalDeposits += amount;
+        uint256 beforeBalance = asset.balanceOf(address(this));
         asset.safeTransferFrom(msg.sender, address(this), amount);
-        emit Deposited(msg.sender, amount, price);
+        uint256 afterBalance = asset.balanceOf(address(this));
+        uint256 received = afterBalance >= beforeBalance ? afterBalance - beforeBalance : 0;
+        if (received != amount) revert UnsupportedTransfer(amount, received);
+        emit Deposited(msg.sender, amount, policy.price);
+        _recordPolicy(policy, true);
     }
 
     function _withdraw(uint256 amount) private {
         if (amount == 0) revert ZeroAmount();
         uint256 available = balances[msg.sender];
         if (available < amount) revert WithdrawExceedsBalance(amount, available);
-        uint256 price = requirePriceInBand();
+        AdmissionPolicy memory policy = _checkedPolicy();
         balances[msg.sender] = available - amount;
         totalDeposits -= amount;
         asset.safeTransfer(msg.sender, amount);
-        emit Withdrawn(msg.sender, amount, price);
+        emit Withdrawn(msg.sender, amount, policy.price);
+        _recordPolicy(policy, false);
     }
 
     function _refreshPrice(bytes[] calldata priceUpdate) private {
@@ -165,7 +196,33 @@ contract OracleGatedVault is Ownable, ReentrancyGuard {
         if (msg.value > fee) Address.sendValue(payable(msg.sender), msg.value - fee);
     }
 
+    function _validateOracle(address source) private view {
+        uint8 actual = IPriceOracle(source).decimals();
+        if (actual != PRICE_DECIMALS) revert InvalidOracleDecimals(actual);
+    }
+
+    function _checkedPolicy() private view returns (AdmissionPolicy memory policy) {
+        (uint256 price, uint256 observedAt) = oracle.latestPrice();
+        if (!_isFresh(observedAt)) revert StalePrice(observedAt, maxStaleness);
+        if (price < minPrice || price > maxPrice) revert PriceOutOfBand(price, minPrice, maxPrice);
+        policy = AdmissionPolicy(price, observedAt, address(oracle), minPrice, maxPrice, maxStaleness, block.timestamp);
+    }
+
+    function _recordPolicy(AdmissionPolicy memory policy, bool depositAction) private {
+        emit AdmissionRecorded(
+            msg.sender,
+            depositAction,
+            policy.source,
+            policy.price,
+            policy.observedAt,
+            policy.minimum,
+            policy.maximum,
+            policy.freshnessWindow,
+            policy.evaluatedAt
+        );
+    }
+
     function _isFresh(uint256 updatedAt) private view returns (bool) {
-        return updatedAt >= block.timestamp || block.timestamp - updatedAt <= maxStaleness;
+        return updatedAt != 0 && updatedAt <= block.timestamp && block.timestamp - updatedAt <= maxStaleness;
     }
 }

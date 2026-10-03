@@ -54,7 +54,14 @@ const UINT_RE = /^[0-9]+$/;
 /** Unique key of an on-chain event; used to make the relay idempotent. */
 export const auditKey = (e: Pick<AuditEvent, "txHash" | "logIndex">) => `${e.txHash.toLowerCase()}:${e.logIndex}`;
 
+/** ogv.audit/1 supports EVM hashes only; never fabricate one by truncating a native hash. */
+export function requireEvmTransactionHash(hash: string): string {
+  if (!HASH_RE.test(hash)) throw new Error("Unsupported mirror transaction hash: expected a 32-byte EVM hash");
+  return hash;
+}
+
 export function encodeAuditMessage(e: AuditEvent): string {
+  requireEvmTransactionHash(e.txHash);
   const wire: AuditWire = {
     s: AUDIT_SCHEMA,
     k: e.kind,

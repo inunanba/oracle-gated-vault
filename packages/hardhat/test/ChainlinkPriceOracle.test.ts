@@ -54,6 +54,11 @@ describe("ChainlinkPriceOracle + OracleGatedVault (push-oracle path)", function 
       expect(price).to.equal(10_167_300n);
     });
 
+    it("rejects a positive raw answer that rounds to zero", async function () {
+      const { oracle } = await deployFixture(18, 1n);
+      await expect(oracle.latestPrice()).to.be.revertedWithCustomError(oracle, "PriceRoundsToZero");
+    });
+
     it("rejects non-positive answers and incomplete rounds", async function () {
       const { feed, oracle } = await deployFixture();
       await feed.setRound(0n, await time.latest());
@@ -90,6 +95,19 @@ describe("ChainlinkPriceOracle + OracleGatedVault (push-oracle path)", function 
         vault,
         "StalePrice",
       );
+    });
+
+    it("rejects future observations without moving funds or emitting admission evidence", async function () {
+      const { vault, feed, alice, token } = await deployFixture();
+      await vault.connect(alice).deposit(10n);
+      const before = await token.balanceOf(alice.address);
+      await feed.setRound(10_000_000n, (await time.latest()) + 3600);
+      const [, , fresh] = await vault.previewGate();
+      expect(fresh).to.equal(false);
+      await expect(vault.connect(alice).deposit(10n)).to.be.revertedWithCustomError(vault, "StalePrice");
+      await expect(vault.connect(alice).withdraw(10n)).to.be.revertedWithCustomError(vault, "StalePrice");
+      expect(await token.balanceOf(alice.address)).to.equal(before);
+      expect(await vault.balances(alice.address)).to.equal(10n);
     });
 
     it("rejects the pull-update path because a push feed has no update fee", async function () {

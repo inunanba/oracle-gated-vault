@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { formatEther, formatUnits } from "viem";
 import {
   type AuditEntry,
-  type AuditVerification,
+  type AuditEvidence,
   auditTopicFor,
   fetchAuditEntries,
-  verifyAuditEntry,
+  verifyAuditEvidence,
 } from "~~/utils/hcs/audit";
 
 const explorer = (chainId: number) => `https://hashscan.io/${chainId === 295 ? "mainnet" : "testnet"}`;
@@ -22,7 +22,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddress: string }) => {
   const topic = auditTopicFor(chainId);
   const [entries, setEntries] = useState<AuditEntry[]>();
-  const [verified, setVerified] = useState<Record<number, AuditVerification>>({});
+  const [verified, setVerified] = useState<Record<number, AuditEvidence>>({});
   const [loadedScope, setLoadedScope] = useState<string>();
   const scope = `${chainId}:${vaultAddress.toLowerCase()}:${topic?.topicId ?? ""}`;
   const [error, setError] = useState<string>();
@@ -44,7 +44,7 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
         setError(undefined);
         const results = await Promise.all(
           list.map(
-            async entry => [entry.sequenceNumber, await verifyAuditEntry(chainId, vaultAddress, entry)] as const,
+            async entry => [entry.sequenceNumber, await verifyAuditEvidence(chainId, vaultAddress, entry)] as const,
           ),
         );
         if (!cancelled) setVerified(Object.fromEntries(results));
@@ -86,7 +86,8 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
       </div>
       <p className="text-xs text-base-content/70 m-0">
         Operator-relayed records. Verified means this entry matches this vault on the selected network; it does not
-        prove that every event has been recorded. New wallet actions appear after the operator runs the relay.
+        prove that every event has been recorded. Admission evidence checks the recorded policy, not the economic truth
+        of the feed. New wallet actions appear after the operator runs the relay.
       </p>
       {error && <p className="text-error text-sm m-0">Mirror node: {error}</p>}
       {!entries || loadedScope !== scope ? (
@@ -124,7 +125,8 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
                     >
                       {short(e.txHash)}
                     </a>
-                    {verified[e.sequenceNumber] === undefined ? null : verified[e.sequenceNumber] === "verified" ? (
+                    {verified[e.sequenceNumber] === undefined ? null : verified[e.sequenceNumber]?.receipt ===
+                      "verified" ? (
                       <span
                         className="badge badge-success badge-sm ml-2"
                         title="Matches this vault’s event on the selected network; completeness is not proven"
@@ -133,11 +135,42 @@ export const AuditLog = ({ chainId, vaultAddress }: { chainId: number; vaultAddr
                       </span>
                     ) : (
                       <span
-                        className={`badge ${verified[e.sequenceNumber] === "unknown" ? "badge-warning" : "badge-error"} badge-sm ml-2`}
+                        className={`badge ${verified[e.sequenceNumber]?.receipt === "unknown" ? "badge-warning" : "badge-error"} badge-sm ml-2`}
                         title="Mirror unavailable or entry does not match the selected vault"
                       >
-                        {verified[e.sequenceNumber]}
+                        {verified[e.sequenceNumber]?.receipt}
                       </span>
+                    )}
+                    {verified[e.sequenceNumber]?.receipt === "verified" && (
+                      <div className="text-xs mt-1">
+                        {verified[e.sequenceNumber].admission === "verified" ? (
+                          <details>
+                            <summary className="cursor-pointer text-success">Admission policy verified</summary>
+                            <p className="m-0">
+                              Band: ${formatUnits(verified[e.sequenceNumber].policy!.minimum, 8)}– $
+                              {formatUnits(verified[e.sequenceNumber].policy!.maximum, 8)}; observation age at action:
+                              {String(
+                                verified[e.sequenceNumber].policy!.evaluatedAt -
+                                  verified[e.sequenceNumber].policy!.observedAt,
+                              )}
+                              s /{String(verified[e.sequenceNumber].policy!.freshnessWindow)}s allowed.
+                            </p>
+                            <p className="m-0">Oracle: {verified[e.sequenceNumber].policy!.source}</p>
+                          </details>
+                        ) : (
+                          <span
+                            className={
+                              verified[e.sequenceNumber].admission === "mismatch"
+                                ? "text-error"
+                                : "text-base-content/60"
+                            }
+                          >
+                            {verified[e.sequenceNumber].admission === "legacy"
+                              ? "Legacy receipt: no admission evidence"
+                              : `Admission evidence: ${verified[e.sequenceNumber].admission}`}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>

@@ -75,6 +75,19 @@ describe("PythPriceOracle + OracleGatedVault (pull-oracle path)", function () {
       await expect(oracle.latestPrice()).to.be.revertedWithCustomError(oracle, "ConfidenceTooWide");
     });
 
+    it("does not round away an excessive confidence interval", async function () {
+      const { oracle, pyth, update } = await deployFixture();
+      // At exponent -10, confidence 3 rounds to zero at 8 decimals, but is 3% of raw price.
+      await pyth.updatePriceFeeds([await update(100n, -10, 3n)], { value: UPDATE_FEE });
+      await expect(oracle.latestPrice()).to.be.revertedWithCustomError(oracle, "ConfidenceTooWide");
+    });
+
+    it("rejects a positive raw price that rounds to zero", async function () {
+      const { oracle, pyth, update } = await deployFixture();
+      await pyth.updatePriceFeeds([await update(1n, -10, 0n)], { value: UPDATE_FEE });
+      await expect(oracle.latestPrice()).to.be.revertedWithCustomError(oracle, "PriceRoundsToZero");
+    });
+
     it("requires the exact update fee", async function () {
       const { oracle, update } = await deployFixture();
       const data = await update(10_000_000n);

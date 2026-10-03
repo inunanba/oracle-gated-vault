@@ -14,6 +14,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
     uint8 private immutable _decimals;
     uint8 private immutable _feedDecimals;
 
+    error PriceRoundsToZero();
     error NonPositivePrice(int256 answer);
     error IncompleteRound(uint80 roundId);
 
@@ -35,6 +36,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
         } else {
             price = raw * 10 ** (_decimals - _feedDecimals);
         }
+        if (price == 0) revert PriceRoundsToZero();
         updatedAt = roundUpdatedAt;
     }
 

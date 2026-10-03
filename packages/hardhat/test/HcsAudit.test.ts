@@ -10,6 +10,7 @@ import {
   decodeAuditMessage,
   encodeAuditMessage,
   relayAuditEvents,
+  requireEvmTransactionHash,
   type AuditEvent,
 } from "../utils/hcsAudit";
 
@@ -59,6 +60,13 @@ describe("HCS audit log", function () {
     expect(Buffer.byteLength(message)).to.be.lessThan(HCS_MAX_MESSAGE_BYTES);
     expect(JSON.parse(message).s).to.equal(AUDIT_SCHEMA);
     expect(decodeAuditMessage(message)).to.deep.equal(sample);
+  });
+
+  it("never truncates a native transaction hash into a claimed EVM proof", function () {
+    expect(requireEvmTransactionHash(sample.txHash)).to.equal(sample.txHash);
+    const nativeHash = "0x" + "11".repeat(48);
+    expect(() => requireEvmTransactionHash(nativeHash)).to.throw("Unsupported mirror transaction hash");
+    expect(() => encodeAuditMessage({ ...sample, txHash: nativeHash })).to.throw("Unsupported mirror transaction hash");
   });
 
   it("rejects foreign or malformed topic messages", function () {

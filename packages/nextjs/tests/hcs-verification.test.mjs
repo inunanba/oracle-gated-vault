@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
-import { encodeAbiParameters, encodeEventTopics } from "viem";
+import { encodeAbiParameters, encodeEventTopics, parseAbi } from "viem";
 
 // Use the project's compiler so the test also runs on the supported Node 20 release.
 const source = await readFile(new URL("../utils/hcs/verification.ts", import.meta.url), "utf8");
@@ -21,7 +21,7 @@ try {
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }
-const { decodeAuditEntry, verifyAuditEntry } = verifier;
+const { decodeAuditEntry, verifyAuditEntry, verifyAuditEvidence } = verifier;
 
 const vault = "0x" + "ab".repeat(20),
   other = "0x" + "cd".repeat(20),
@@ -63,7 +63,7 @@ const log = {
   topics,
   data: encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [10n, 100n]),
 };
-async function check(overrides = {}, options = {}) {
+async function check(overrides = {}, options = {}, detailed = false) {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async url => {
@@ -79,7 +79,10 @@ async function check(overrides = {}, options = {}) {
     };
   };
   try {
-    return { status: await verifyAuditEntry(296, vault, { ...entry(), ...overrides }), calls };
+    return {
+      status: await (detailed ? verifyAuditEvidence : verifyAuditEntry)(296, vault, { ...entry(), ...overrides }),
+      calls,
+    };
   } finally {
     globalThis.fetch = original;
   }
@@ -154,3 +157,78 @@ test("public testnet topic entries independently verify", { skip: process.env.LI
   for (const e of entries.slice(0, 2))
     assert.equal(await verifyAuditEntry(296, "0x1a6002485B5729088023CAdCd378CA22f28fC287", e), "verified");
 });
+
+const admissionAbi = parseAbi([
+  "event AdmissionRecorded(address indexed user, bool depositAction, address indexed source, uint256 price, uint256 observedAt, uint256 minimum, uint256 maximum, uint256 freshnessWindow, uint256 evaluatedAt)",
+]);
+function admissionLog(fields = {}, metadata = {}) {
+  const p = {
+    user,
+    depositAction: true,
+    source: other,
+    price: 100n,
+    observedAt: 900n,
+    minimum: 80n,
+    maximum: 120n,
+    freshnessWindow: 200n,
+    evaluatedAt: 1000n,
+    ...fields,
+  };
+  return {
+    index: 4,
+    address: vault,
+    contract_id: id,
+    topics: encodeEventTopics({
+      abi: admissionAbi,
+      eventName: "AdmissionRecorded",
+      args: { user: p.user, source: p.source },
+    }),
+    data: encodeAbiParameters(
+      [{ type: "bool" }, ...Array.from({ length: 6 }, () => ({ type: "uint256" }))],
+      [p.depositAction, p.price, p.observedAt, p.minimum, p.maximum, p.freshnessWindow, p.evaluatedAt],
+    ),
+    ...metadata,
+  };
+}
+async function policyCheck(fields = {}, metadata = {}) {
+  return (await check({}, { result: { result: "SUCCESS", logs: [log, admissionLog(fields, metadata)] } }, true)).status;
+}
+test("verifies historical admission policy without reading today's configuration", async () => {
+  const result = await policyCheck();
+  assert.equal(result.receipt, "verified");
+  assert.equal(result.admission, "verified");
+  assert.equal(result.policy.observedAt, 900n);
+  assert.equal(result.policy.minimum, 80n);
+});
+test("legacy receipt verification does not imply admission proof", async () => {
+  const result = (await check({}, {}, true)).status;
+  assert.equal(result.receipt, "verified");
+  assert.equal(result.admission, "legacy");
+});
+test("rejects tampered admission conditions while retaining the independently matching action", async () => {
+  for (const fields of [
+    { user: other },
+    { depositAction: false },
+    { price: 101n },
+    { minimum: 101n },
+    { maximum: 99n },
+    { observedAt: 0n },
+    { observedAt: 1001n },
+    { freshnessWindow: 99n },
+    { source: "0x" + "00".repeat(20) },
+  ]) {
+    const result = await policyCheck(fields);
+    assert.equal(result.receipt, "verified");
+    assert.equal(
+      result.admission,
+      "mismatch",
+      JSON.stringify(fields, (_, v) => (typeof v === "bigint" ? String(v) : v)),
+    );
+  }
+});
+test("another contract cannot supply the admission proof", async () =>
+  assert.equal((await policyCheck({}, { address: other })).admission, "mismatch"));
+test("wrong admission emitter ID is rejected", async () =>
+  assert.equal((await policyCheck({}, { contract_id: "0.0.5678" })).admission, "mismatch"));
+test("malformed admission evidence remains unknown", async () =>
+  assert.equal((await policyCheck({}, { data: "0x" })).admission, "unknown"));

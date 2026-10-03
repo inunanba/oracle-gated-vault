@@ -1,48 +1,37 @@
-name: Lint
+name: Verify template
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        node: [lts/*]
-
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          submodules: recursive
-
-      - name: Setup node env
-        uses: actions/setup-node@v3
-        with:
-          node-version: ${{ matrix.node }}
+          node-version: "22"
           cache: npm
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run Hardhat node and deploy contracts
+      - name: Install the committed dependency graph
+        run: npm ci
+      - name: Compile and test contracts (no fork, wallet or feed)
+        run: npm run hardhat:test
+      - name: Test receipt verification and tamper cases
+        run: npm run test:hcs-ui
+      - name: Lint both workspaces
+        run: npm run lint -- --max-warnings=0
+      - name: Check both workspaces
         run: |
-          npm run hardhat:chain &
-          timeout 60s bash -c 'until curl -s -X POST http://127.0.0.1:8545 -H "Content-Type: application/json" --data "{\"jsonrpc\":\"2.0\",\"method\":\"web3_clientVersion\",\"params\":[],\"id\":1}" >/dev/null; do sleep 2; done'
-          npm run hardhat:deploy --network localhost
-
-      - name: Run nextjs lint
-        run: npm run next:lint --max-warnings=0
-
-      - name: Check typings on nextjs
-        run: npm run next:check-types
-
-      - name: Run hardhat lint
-        run: npm run hardhat:lint --max-warnings=0
+          npm run hardhat:check-types
+          npm run next:check-types
+      - name: Build production application
+        run: npm run next:build
+      - name: Boot production routes
+        run: npm run test:ui-boot

@@ -20,6 +20,7 @@ contract PythPriceOracle is IUpdatablePriceOracle {
     /// @notice Max allowed confidence interval as basis points of price (e.g. 200 = 2%).
     uint256 public immutable maxConfidenceBps;
 
+    error PriceRoundsToZero();
     error NonPositivePrice(int64 price);
     error ConfidenceTooWide(uint64 conf, uint256 price);
     error ExponentOutOfRange(int32 expo);
@@ -50,8 +51,10 @@ contract PythPriceOracle is IUpdatablePriceOracle {
         if (p.price <= 0) revert NonPositivePrice(p.price);
 
         price = _scale(uint256(uint64(p.price)), p.expo);
-        uint256 conf = _scale(uint256(p.conf), p.expo);
-        if (conf * BPS > price * maxConfidenceBps) revert ConfidenceTooWide(p.conf, price);
+        if (price == 0) revert PriceRoundsToZero();
+        // Both raw values have the same exponent; compare before rounding can hide uncertainty.
+        if (uint256(p.conf) * BPS > uint256(uint64(p.price)) * maxConfidenceBps)
+            revert ConfidenceTooWide(p.conf, price);
 
         updatedAt = p.publishTime;
     }

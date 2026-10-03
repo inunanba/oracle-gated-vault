@@ -173,4 +173,99 @@ describe("OracleGatedVault", function () {
       "OwnableUnauthorizedAccount",
     );
   });
+  it("records the exact admission policy and preserves it after configuration changes", async function () {
+    const { vault, oracle, alice } = await deployFixture();
+    const [, observedAt] = await oracle.latestPrice();
+    const tx = await vault.connect(alice).deposit(10n);
+    const receipt = await tx.wait();
+    const block = await ethers.provider.getBlock(receipt!.blockNumber);
+    await expect(tx)
+      .to.emit(vault, "AdmissionRecorded")
+      .withArgs(
+        alice.address,
+        true,
+        await oracle.getAddress(),
+        100_000_000n,
+        observedAt,
+        80_000_000n,
+        120_000_000n,
+        3600n,
+        BigInt(block!.timestamp),
+      );
+    const parsed = receipt!.logs.filter(l => l.address === receipt!.to).map(l => vault.interface.parseLog(l));
+    expect(parsed.map(l => l!.name)).to.deep.equal(["Deposited", "AdmissionRecorded"]);
+    await vault.setBand(90_000_000n, 110_000_000n, 7200);
+    const withdrawal = await vault.connect(alice).withdraw(10n);
+    const withdrawalReceipt = await withdrawal.wait();
+    const withdrawalBlock = await ethers.provider.getBlock(withdrawalReceipt!.blockNumber);
+    await expect(withdrawal)
+      .to.emit(vault, "AdmissionRecorded")
+      .withArgs(
+        alice.address,
+        false,
+        await oracle.getAddress(),
+        100_000_000n,
+        observedAt,
+        90_000_000n,
+        110_000_000n,
+        7200n,
+        BigInt(withdrawalBlock!.timestamp),
+      );
+    expect(parsed[1]!.args.minimum).to.equal(80_000_000n);
+  });
+
+  it("rejects a wrong-decimal adapter during construction and replacement", async function () {
+    const { vault, token, owner } = await deployFixture();
+    const wrong = await (await ethers.getContractFactory("MockPriceOracle")).deploy(100n, 6, owner.address);
+    await expect(vault.setOracle(await wrong.getAddress()))
+      .to.be.revertedWithCustomError(vault, "InvalidOracleDecimals")
+      .withArgs(6);
+    const factory = await ethers.getContractFactory("OracleGatedVault");
+    await expect(factory.deploy(await token.getAddress(), await wrong.getAddress(), 1, 200, 60, owner.address))
+      .to.be.revertedWithCustomError(factory, "InvalidOracleDecimals")
+      .withArgs(6);
+  });
+
+  it("rolls back a taxed token deposit instead of creating an insolvent balance", async function () {
+    const [owner] = await ethers.getSigners();
+    const token = await (await ethers.getContractFactory("FeeToken")).deploy();
+    const oracle = await (await ethers.getContractFactory("MockPriceOracle")).deploy(100n, 8, owner.address);
+    const vault = await (
+      await ethers.getContractFactory("OracleGatedVault")
+    ).deploy(await token.getAddress(), await oracle.getAddress(), 80, 120, 3600, owner.address);
+    await token.approve(await vault.getAddress(), 100);
+    const before = await token.balanceOf(owner.address);
+    await expect(vault.deposit(100)).to.be.revertedWithCustomError(vault, "UnsupportedTransfer").withArgs(100, 99);
+    expect(await token.balanceOf(owner.address)).to.equal(before);
+    expect(await token.balanceOf(await vault.getAddress())).to.equal(0);
+    expect(await vault.totalDeposits()).to.equal(0);
+    expect(await vault.balances(owner.address)).to.equal(0);
+  });
+  it("records the checked policy even when an owner token changes settings during transfer", async function () {
+    const [owner] = await ethers.getSigners();
+    const token = await (await ethers.getContractFactory("PolicyChangingToken")).deploy();
+    const oracle = await (await ethers.getContractFactory("MockPriceOracle")).deploy(100n, 8, owner.address);
+    const vault = await (
+      await ethers.getContractFactory("OracleGatedVault")
+    ).deploy(await token.getAddress(), await oracle.getAddress(), 80, 120, 3600, owner.address);
+    await vault.transferOwnership(await token.getAddress());
+    await token.setTarget(await vault.getAddress());
+    await token.approve(await vault.getAddress(), 10);
+    const tx = await vault.deposit(10);
+    const receipt = await tx.wait();
+    const policy = receipt!.logs
+      .map(l => {
+        try {
+          return vault.interface.parseLog(l);
+        } catch {
+          return null;
+        }
+      })
+      .find(l => l?.name === "AdmissionRecorded");
+    expect(await vault.minPrice()).to.equal(101);
+    expect(policy!.args.minimum).to.equal(80);
+    expect(policy!.args.maximum).to.equal(120);
+    expect(policy!.args.freshnessWindow).to.equal(3600);
+    expect(await vault.balances(owner.address)).to.equal(10);
+  });
 });

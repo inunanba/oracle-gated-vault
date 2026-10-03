@@ -1,8 +1,8 @@
 import { type AuditEntry, MIRROR_NODE, decodeAuditEntry } from "./verification";
 import hcsAuditTopics from "~~/contracts/hcsAuditTopics.json";
 
-export { AUDIT_SCHEMA, MIRROR_NODE, verifyAuditEntry } from "./verification";
-export type { AuditEntry, AuditVerification } from "./verification";
+export { AUDIT_SCHEMA, MIRROR_NODE, verifyAuditEntry, verifyAuditEvidence } from "./verification";
+export type { AuditEntry, AuditVerification, AuditEvidence } from "./verification";
 
 export type AuditTopic = { topicId: string; vault: string; createdAt: string };
 

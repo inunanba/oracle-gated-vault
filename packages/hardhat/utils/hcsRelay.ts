@@ -1,4 +1,10 @@
-import { type AuditEvent, auditEventsFromLogs, relayAuditEvents, type RelayedEntry } from "./hcsAudit";
+import {
+  type AuditEvent,
+  auditEventsFromLogs,
+  relayAuditEvents,
+  type RelayedEntry,
+  requireEvmTransactionHash,
+} from "./hcsAudit";
 import { HcsTopicSink, MIRROR_NODE, fetchLoggedAuditEvents, operatorClient } from "./hcsClient";
 
 type MirrorLog = {
@@ -26,7 +32,7 @@ export async function fetchVaultAuditEvents(chainId: number, vault: string): Pro
       address: vault, // the mirror node reports the long-zero address; the query is already scoped to the vault
       topics: l.topics,
       data: l.data,
-      transactionHash: l.transaction_hash.slice(0, 66),
+      transactionHash: requireEvmTransactionHash(l.transaction_hash),
       index: l.index,
       blockNumber: l.block_number,
     })),

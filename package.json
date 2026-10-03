@@ -41,7 +41,8 @@
     "test": "npm run hardhat:test",
     "hardhat:hcs:relay": "npm run hcs:relay -w @sh/hardhat --",
     "hardhat:verify:sourcify": "npm run verify:sourcify -w @sh/hardhat --",
-    "test:hcs-ui": "node --test packages/nextjs/tests/hcs-verification.test.mjs"
+    "test:hcs-ui": "node --test packages/nextjs/tests/hcs-verification.test.mjs",
+    "test:ui-boot": "node scripts/smoke-ui.mjs"
   },
   "packageManager": "npm@10.0.0",
   "devDependencies": {

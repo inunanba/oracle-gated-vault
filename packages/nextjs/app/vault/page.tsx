@@ -13,7 +13,12 @@ const hashscanBase = (chainId: number) =>
 
 const VaultPage: NextPage = () => {
   const { targetNetwork } = useTargetNetwork();
-  const { data: vault, isLoading } = useDeployedContractInfo({ contractName: "OracleGatedVault" });
+  const {
+    data: vault,
+    isLoading,
+    error: deploymentError,
+    configuredAddress,
+  } = useDeployedContractInfo({ contractName: "OracleGatedVault" });
   const explorer = hashscanBase(targetNetwork.id);
 
   return (
@@ -29,6 +34,10 @@ const VaultPage: NextPage = () => {
           </p>
         </div>
 
+        <Link href="/proof-lab" className="link link-primary text-sm">
+          Try the wallet-free receipt tamper lab →
+        </Link>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <LiveFeedPrice />
           {vault ? <GateStatus /> : null}
@@ -36,6 +45,20 @@ const VaultPage: NextPage = () => {
 
         {isLoading ? (
           <div className="h-24 rounded-2xl bg-base-200 animate-pulse" />
+        ) : deploymentError ? (
+          <>
+            <div className="bg-base-100 rounded-2xl border border-warning/40 p-6 space-y-2">
+              <h2 className="text-xl font-semibold m-0">Deployment status unknown</h2>
+              <p className="text-sm m-0">
+                The RPC deployment check failed. This does not mean the vault is absent. Reload when the network is
+                available.
+              </p>
+              {configuredAddress && (
+                <p className="font-mono text-xs break-all m-0">Configured vault: {configuredAddress}</p>
+              )}
+            </div>
+            {configuredAddress && <AuditLog chainId={targetNetwork.id} vaultAddress={configuredAddress} />}
+          </>
         ) : vault ? (
           <>
             <VaultActions vaultAddress={vault.address} />

@@ -13,6 +13,8 @@ import {
 type DeployedContractData<TContractName extends ContractName> = {
   data: Contract<TContractName> | undefined;
   isLoading: boolean;
+  error?: Error;
+  configuredAddress?: `0x${string}`;
 };
 
 /**
@@ -47,40 +49,42 @@ export function useDeployedContractInfo<TContractName extends ContractName>(
   const { contractName, chainId } = finalConfig;
   const selectedNetwork = useSelectedNetwork(chainId);
   const deployedContract = contracts?.[selectedNetwork.id]?.[String(contractName)] as Contract<TContractName>;
-  const [status, setStatus] = useState<ContractCodeStatus>(ContractCodeStatus.LOADING);
+  const scope = `${selectedNetwork.id}:${deployedContract?.address ?? ""}:${contractName}`;
+  const [checked, setChecked] = useState<{ scope: string; status: ContractCodeStatus; error?: Error }>();
   const publicClient = usePublicClient({ chainId: selectedNetwork.id });
 
   useEffect(() => {
+    let cancelled = false;
+    const finish = (status: ContractCodeStatus, error?: Error) => {
+      if (!cancelled) setChecked({ scope, status, error });
+    };
     const checkContractDeployment = async () => {
+      if (!isMounted()) return;
+      finish(ContractCodeStatus.LOADING);
+      if (!deployedContract) {
+        finish(ContractCodeStatus.NOT_FOUND);
+        return;
+      }
+      if (!publicClient) return;
       try {
-        if (!isMounted() || !publicClient) return;
-
-        if (!deployedContract) {
-          setStatus(ContractCodeStatus.NOT_FOUND);
-          return;
-        }
-
-        const code = await publicClient.getCode({
-          address: deployedContract.address,
-        });
-
-        // If contract code is `0x` => no contract deployed on that address
-        if (code === "0x") {
-          setStatus(ContractCodeStatus.NOT_FOUND);
-          return;
-        }
-        setStatus(ContractCodeStatus.DEPLOYED);
+        const code = await publicClient.getCode({ address: deployedContract.address });
+        finish(!code || code === "0x" ? ContractCodeStatus.NOT_FOUND : ContractCodeStatus.DEPLOYED);
       } catch (e) {
-        console.error(e);
-        setStatus(ContractCodeStatus.NOT_FOUND);
+        // An unavailable RPC cannot establish that a configured deployment is absent.
+        finish(ContractCodeStatus.NOT_FOUND, e instanceof Error ? e : new Error("Deployment check unavailable"));
       }
     };
-
     checkContractDeployment();
-  }, [isMounted, contractName, deployedContract, publicClient]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isMounted, contractName, deployedContract, publicClient, scope]);
+  const current = checked?.scope === scope ? checked : undefined;
 
   return {
-    data: status === ContractCodeStatus.DEPLOYED ? deployedContract : undefined,
-    isLoading: status === ContractCodeStatus.LOADING,
+    data: current?.status === ContractCodeStatus.DEPLOYED ? deployedContract : undefined,
+    isLoading: !current || current.status === ContractCodeStatus.LOADING,
+    error: current?.error,
+    configuredAddress: deployedContract?.address,
   };
 }
