@@ -17,7 +17,7 @@ Use it as the starting point for anything that should only move money at a sane 
 
 ![Vault page](docs/screenshots/vault.png)
 
-**Earlier deployment demo** (silent, captioned, under 2 min; does not demonstrate AdmissionRecorded until a new deployment is published): [oracle-gated-vault-demo.mp4](https://github.com/inunanba/oracle-gated-vault/releases/download/v1.0.0/oracle-gated-vault-demo.mp4) · **Live on testnet:** [vault](https://hashscan.io/testnet/contract/0x1a6002485B5729088023CAdCd378CA22f28fC287) · [gated deposit](https://hashscan.io/testnet/transaction/0x4bc6c42863e896de44215d9538da59d2211005eb1e4b586fdeda1f5356a288b0) · [HCS audit topic](https://hashscan.io/testnet/topic/0.0.10841114)
+**Demo video v2** (2:52, silent, English captions; local production build, six `/proof-lab` tamper cases and the earlier live run): [oracle-gated-vault-demo-v2.mp4](https://github.com/inunanba/oracle-gated-vault/releases/download/v2.0.0/oracle-gated-vault-demo-v2.mp4) · **Live on testnet with admission evidence:** [vault](https://hashscan.io/testnet/contract/0x9BbE7C20a92796b930366364b8f172eF76EcF799) · [gated deposit](https://hashscan.io/testnet/transaction/0xd52ca3f25e85b95c76e2579c33c6722edcf531b19c4885f0b454d002db7aeaa0) · [gated withdraw](https://hashscan.io/testnet/transaction/0x41bfd65c4a8b3e3c0cc80e569fa5537744963f8b976aa12684728774475a3e8a) · [HCS audit topic](https://hashscan.io/testnet/topic/0.0.10843927)
 
 ---
 
@@ -166,29 +166,45 @@ Mainnet configuration is provided with `--network hederaMainnet`; the mainnet Ch
 
 <!-- TESTNET_PROOF:START -->
 
-Deployed 2026-10-03 11:20 UTC on Hedera testnet (chain 296). Oracle: Chainlink HBAR/USD `0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a`. All three contracts are **verified on Sourcify (exact match)**, so HashScan shows their source.
+Deployed 2026-10-03 15:39 UTC on Hedera testnet (chain 296) from the admission-evidence release. Oracle: Chainlink HBAR/USD `0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a`. All three contracts are **verified on Sourcify (exact match)**, so HashScan shows their source.
 
-| Contract               | Address                                                                                                                         | Deploy                                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `HederaToken`          | [`0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2`](https://hashscan.io/testnet/contract/0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2) | [deploy tx](https://hashscan.io/testnet/transaction/0x97a3f05efb2c8069282aa3982d20f6a1549f111d3424f123ca1cbeaa5bab83ab) |
-| `ChainlinkPriceOracle` | [`0x004F052e30bED6a87165b1D4b7f574BfC56bFe7a`](https://hashscan.io/testnet/contract/0x004F052e30bED6a87165b1D4b7f574BfC56bFe7a) | [deploy tx](https://hashscan.io/testnet/transaction/0x656a07756090b5710e56b1425899cdfbcb3586e6ada6a59ea8ffff8ceffec39f) |
-| `OracleGatedVault`     | [`0x1a6002485B5729088023CAdCd378CA22f28fC287`](https://hashscan.io/testnet/contract/0x1a6002485B5729088023CAdCd378CA22f28fC287) | [deploy tx](https://hashscan.io/testnet/transaction/0x2933e878133572179cc5a73d5537135bd4f345ea6c870c49fdc56cfcacb7fd86) |
+| Contract                            | Address                                                                                                                         | Deploy                                                                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `HederaToken` (reused)              | [`0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2`](https://hashscan.io/testnet/contract/0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2) | [deploy tx](https://hashscan.io/testnet/transaction/0x97a3f05efb2c8069282aa3982d20f6a1549f111d3424f123ca1cbeaa5bab83ab) |
+| `ChainlinkPriceOracle`              | [`0x696B5A76fbF6c3f011DA4771Ad4942b3023C37Fe`](https://hashscan.io/testnet/contract/0x696B5A76fbF6c3f011DA4771Ad4942b3023C37Fe) | [deploy tx](https://hashscan.io/testnet/transaction/0xd293557f97788f730a20af09304310ef5e2d08604c964685a8208a1f4973b88c) |
+| `OracleGatedVault` (`0.0.10843924`) | [`0x9BbE7C20a92796b930366364b8f172eF76EcF799`](https://hashscan.io/testnet/contract/0x9BbE7C20a92796b930366364b8f172eF76EcF799) | [deploy tx](https://hashscan.io/testnet/transaction/0xeb84ed6ddaa81a58f83f662fcb733761a49534ef217774354c0969050853b7b6) |
 
-Live end-to-end run (`npm run hardhat:e2e:testnet`), oracle price $0.10167308 (2879 s old):
+Live end-to-end run (`npm run hardhat:e2e:testnet`), oracle price $0.10215058 (observed 2263 s before the run, within the 90000 s window, band $0.01–$1.00):
 
-| Step                                          | HashScan                                                                                                                  |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| approve                                       | [transaction](https://hashscan.io/testnet/transaction/0x49c6294f956d19f07c3c95bebf7c0ccf7d88e4a15c14aec7f1800cf95be76a48) |
-| deposit(10.0 HTK) gated by Chainlink HBAR/USD | [transaction](https://hashscan.io/testnet/transaction/0x4bc6c42863e896de44215d9538da59d2211005eb1e4b586fdeda1f5356a288b0) |
-| withdraw(5.0 HTK) gated by Chainlink HBAR/USD | [transaction](https://hashscan.io/testnet/transaction/0x177e519d883dd37f8ccc84998ebd257967e219701a861714c55f3934d8c23d92) |
-| HCS audit topic 0.0.10841114                  | [topic](https://hashscan.io/testnet/topic/0.0.10841114)                                                                   |
+| Step                                          | HashScan                                                                                                                  | Receipt / admission (independent Mirror Node check)                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| approve                                       | [transaction](https://hashscan.io/testnet/transaction/0xc1ed33ba8af8862c6f2a034e578e403ece7f1b0243ef627d8711c1dc94a100c9) | SUCCESS                                                                                      |
+| deposit(10.0 HTK) gated by Chainlink HBAR/USD | [transaction](https://hashscan.io/testnet/transaction/0xd52ca3f25e85b95c76e2579c33c6722edcf531b19c4885f0b454d002db7aeaa0) | SUCCESS · `Deposited` log 9 + `AdmissionRecorded` log 10 from the vault: verified / verified |
+| withdraw(5.0 HTK) gated by Chainlink HBAR/USD | [transaction](https://hashscan.io/testnet/transaction/0x41bfd65c4a8b3e3c0cc80e569fa5537744963f8b976aa12684728774475a3e8a) | SUCCESS · `Withdrawn` log 3 + `AdmissionRecorded` log 4 from the vault: verified / verified  |
 
-HCS audit topic [`0.0.10841114`](https://hashscan.io/testnet/topic/0.0.10841114) (submit key = deployer, no admin key):
+HCS audit topic [`0.0.10843927`](https://hashscan.io/testnet/topic/0.0.10843927) (memo binds vault `0x9bbe7c20a92796b930366364b8f172ef76ecf799`; submit key = deployer, no admin key). Both messages were submitted by `0.0.10841014` and carry chain `296`, this vault, the transaction hash and the action log index:
 
-| #   | Entry                          | Mirror node                                                                            |
-| --- | ------------------------------ | -------------------------------------------------------------------------------------- |
-| 1   | deposit 10.0 HTK @ $0.10167308 | [message](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10841114/messages/1) |
-| 2   | withdraw 5.0 HTK @ $0.10167308 | [message](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10841114/messages/2) |
+| #   | Entry                          | HashScan                                                                   | Mirror node                                                                            | Receipt / admission |
+| --- | ------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------- |
+| 1   | deposit 10.0 HTK @ $0.10215058 | [message tx](https://hashscan.io/testnet/transaction/1791042004.073722364) | [message](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10843927/messages/1) | verified / verified |
+| 2   | withdraw 5.0 HTK @ $0.10215058 | [message tx](https://hashscan.io/testnet/transaction/1791042004.679555023) | [message](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10843927/messages/2) | verified / verified |
+
+The HCS relay is operator-run: verified entries prove these entries, not complete or exactly-once coverage.
+
+<details>
+<summary>Earlier deployment (2026-10-03 11:20 UTC): legacy receipts, no admission evidence</summary>
+
+| Item               | Link                                                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `OracleGatedVault` | [`0x1a6002485B5729088023CAdCd378CA22f28fC287`](https://hashscan.io/testnet/contract/0x1a6002485B5729088023CAdCd378CA22f28fC287)    |
+| deposit(10.0 HTK)  | [transaction](https://hashscan.io/testnet/transaction/0x4bc6c42863e896de44215d9538da59d2211005eb1e4b586fdeda1f5356a288b0)          |
+| withdraw(5.0 HTK)  | [transaction](https://hashscan.io/testnet/transaction/0x177e519d883dd37f8ccc84998ebd257967e219701a861714c55f3934d8c23d92)          |
+| HCS audit topic    | [`0.0.10841114`](https://hashscan.io/testnet/topic/0.0.10841114)                                                                   |
+| v1 demo (1:45)     | [oracle-gated-vault-demo.mp4](https://github.com/inunanba/oracle-gated-vault/releases/download/v1.0.0/oracle-gated-vault-demo.mp4) |
+
+These receipts verify as receipts only and show **Legacy receipt: no admission evidence**.
+
+</details>
 
 <!-- TESTNET_PROOF:END -->
 
@@ -348,7 +364,7 @@ A treasury operator may allow transfers only inside a chosen HBAR/USD operating 
 
 `AdmissionRecorded` immediately follows `Deposited` or `Withdrawn` in new vault receipts. It records the user, action, oracle adapter, 8-decimal price, source observation time, price band, freshness window and evaluation time **as checked before the token transfer**. The browser retrieves these values from the same successful transaction and verified vault emitter; it checks action/user/price, band inclusion and nonzero, nonfuture, sufficiently recent observations. No current configuration lookup is used to rewrite historical decisions.
 
-HCS remains `ogv.audit/1`: the transaction hash and action log index locate the adjacent policy event without enlarging a message or inventing off-chain policy values. Earlier deployments remain readable and show **Legacy receipt: no admission evidence**. A verified receipt alone does not imply admission evidence, true market prices or complete relay coverage. The README proof table and old video concern the earlier deployment until a new run supplies fresh links.
+HCS remains `ogv.audit/1`: the transaction hash and action log index locate the adjacent policy event without enlarging a message or inventing off-chain policy values. Earlier deployments remain readable and show **Legacy receipt: no admission evidence**. A verified receipt alone does not imply admission evidence, true market prices or complete relay coverage. The README proof table now links a new deployment whose deposit and withdrawal receipts carry `AdmissionRecorded`; the earlier deployment is kept, labelled legacy.
 
 Contract tests cover historical policy after configuration changes, adapter decimals, future timestamps, taxed-asset rollback, and rounding that could hide Pyth confidence. Browser tests attempt to substitute the user/action/price/band/age/source and emitter; they preserve UNKNOWN for unavailable or malformed data. The CI workflow installs the lockfile and runs contract tests, browser verifier tests, both linters/type checks, and the production build without a live fork or key.
 

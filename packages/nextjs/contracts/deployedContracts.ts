@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-hbar/contract";
 const deployedContracts = {
   296: {
     ChainlinkPriceOracle: {
-      address: "0x004F052e30bED6a87165b1D4b7f574BfC56bFe7a",
+      address: "0x696B5A76fbF6c3f011DA4771Ad4942b3023C37Fe",
       abi: [
         {
           inputs: [
@@ -45,6 +45,11 @@ const deployedContracts = {
             },
           ],
           name: "NonPositivePrice",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "PriceRoundsToZero",
           type: "error",
         },
         {
@@ -109,7 +114,7 @@ const deployedContracts = {
         decimals: "contracts/oracle/IPriceOracle.sol",
         latestPrice: "contracts/oracle/IPriceOracle.sol",
       },
-      deployedOnBlock: 41302251,
+      deployedOnBlock: 41309893,
     },
     HederaToken: {
       address: "0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2",
@@ -563,7 +568,7 @@ const deployedContracts = {
       deployedOnBlock: 41302248,
     },
     OracleGatedVault: {
-      address: "0x1a6002485B5729088023CAdCd378CA22f28fC287",
+      address: "0x9BbE7C20a92796b930366364b8f172eF76EcF799",
       abi: [
         {
           inputs: [
@@ -657,6 +662,17 @@ const deployedContracts = {
         {
           inputs: [
             {
+              internalType: "uint8",
+              name: "actual",
+              type: "uint8",
+            },
+          ],
+          name: "InvalidOracleDecimals",
+          type: "error",
+        },
+        {
+          inputs: [
+            {
               internalType: "address",
               name: "owner",
               type: "address",
@@ -738,6 +754,22 @@ const deployedContracts = {
           inputs: [
             {
               internalType: "uint256",
+              name: "expected",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "received",
+              type: "uint256",
+            },
+          ],
+          name: "UnsupportedTransfer",
+          type: "error",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
               name: "requested",
               type: "uint256",
             },
@@ -759,6 +791,67 @@ const deployedContracts = {
           inputs: [],
           name: "ZeroAmount",
           type: "error",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: true,
+              internalType: "address",
+              name: "user",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "bool",
+              name: "depositAction",
+              type: "bool",
+            },
+            {
+              indexed: true,
+              internalType: "address",
+              name: "source",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "price",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "observedAt",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "minimum",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "maximum",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "freshnessWindow",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "evaluatedAt",
+              type: "uint256",
+            },
+          ],
+          name: "AdmissionRecorded",
+          type: "event",
         },
         {
           anonymous: false,
@@ -885,6 +978,19 @@ const deployedContracts = {
           ],
           name: "Withdrawn",
           type: "event",
+        },
+        {
+          inputs: [],
+          name: "PRICE_DECIMALS",
+          outputs: [
+            {
+              internalType: "uint8",
+              name: "",
+              type: "uint8",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
         },
         {
           inputs: [],
@@ -1180,7 +1286,7 @@ const deployedContracts = {
         renounceOwnership: "@openzeppelin/contracts/access/Ownable.sol",
         transferOwnership: "@openzeppelin/contracts/access/Ownable.sol",
       },
-      deployedOnBlock: 41302255,
+      deployedOnBlock: 41309895,
     },
   },
   31337: {
