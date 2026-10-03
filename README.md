@@ -1,6 +1,6 @@
 # Oracle-gated Vault — a Scaffold-HBAR template
 
-An ERC-20 vault on Hedera whose **deposits and withdrawals only open while a live oracle price is fresh and inside a configured band**. On Hedera it reads the **Chainlink HBAR/USD Data Feed** through a small adapter; a **Pyth pull-oracle adapter** (post a signed Hermes update and act on it in the same transaction) ships alongside it behind the same interface. Every gated deposit and withdrawal is also appended to a **Hedera Consensus Service (HCS) topic**, a public, consensus-timestamped audit log that the UI cross-checks against the EVM transactions.
+An ERC-20 vault on Hedera whose **deposits and withdrawals only open while a live oracle price is fresh and inside a configured band**. On Hedera it reads the **Chainlink HBAR/USD Data Feed** through a small adapter; a **Pyth pull-oracle adapter** (post a signed Hermes update and act on it in the same transaction) ships alongside it behind the same interface. Gated deposits and withdrawals are also mirrored by an idempotent relayer to a **Hedera Consensus Service (HCS) topic**, a public, consensus-timestamped audit log that the UI cross-checks entry by entry against the EVM transactions.
 
 ```bash
 npm create scaffold-hbar@latest -- --template inunanba/oracle-gated-vault
