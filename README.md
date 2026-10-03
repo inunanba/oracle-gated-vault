@@ -153,7 +153,29 @@ Mainnet works the same with `--network hederaMainnet`; the mainnet Chainlink fee
 ## Deployed on testnet
 
 <!-- TESTNET_PROOF:START -->
-_Pending: filled in by the testnet deploy run (contract addresses and HashScan links for the deploy, gated deposit and gated withdraw transactions)._
+Deployed 2026-10-03 11:20 UTC on Hedera testnet (chain 296). Oracle: Chainlink HBAR/USD `0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a`.
+
+| Contract | Address | Deploy |
+|---|---|---|
+| `HederaToken` | [`0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2`](https://hashscan.io/testnet/contract/0xb199E4193E60Eb98C74cb2048Ec91C67F2B070e2) | [deploy tx](https://hashscan.io/testnet/transaction/0x97a3f05efb2c8069282aa3982d20f6a1549f111d3424f123ca1cbeaa5bab83ab) |
+| `ChainlinkPriceOracle` | [`0x004F052e30bED6a87165b1D4b7f574BfC56bFe7a`](https://hashscan.io/testnet/contract/0x004F052e30bED6a87165b1D4b7f574BfC56bFe7a) | [deploy tx](https://hashscan.io/testnet/transaction/0x656a07756090b5710e56b1425899cdfbcb3586e6ada6a59ea8ffff8ceffec39f) |
+| `OracleGatedVault` | [`0x1a6002485B5729088023CAdCd378CA22f28fC287`](https://hashscan.io/testnet/contract/0x1a6002485B5729088023CAdCd378CA22f28fC287) | [deploy tx](https://hashscan.io/testnet/transaction/0x2933e878133572179cc5a73d5537135bd4f345ea6c870c49fdc56cfcacb7fd86) |
+
+Live end-to-end run (`npm run hardhat:e2e:testnet`), oracle price $0.10167308 (2879 s old):
+
+| Step | HashScan |
+|---|---|
+| approve | [transaction](https://hashscan.io/testnet/transaction/0x49c6294f956d19f07c3c95bebf7c0ccf7d88e4a15c14aec7f1800cf95be76a48) |
+| deposit(10.0 HTK) gated by Chainlink HBAR/USD | [transaction](https://hashscan.io/testnet/transaction/0x4bc6c42863e896de44215d9538da59d2211005eb1e4b586fdeda1f5356a288b0) |
+| withdraw(5.0 HTK) gated by Chainlink HBAR/USD | [transaction](https://hashscan.io/testnet/transaction/0x177e519d883dd37f8ccc84998ebd257967e219701a861714c55f3934d8c23d92) |
+| HCS audit topic 0.0.10841114 | [topic](https://hashscan.io/testnet/topic/0.0.10841114) |
+
+HCS audit topic [`0.0.10841114`](https://hashscan.io/testnet/topic/0.0.10841114) (submit key = deployer, no admin key):
+
+| # | Entry | Mirror node |
+|---|---|---|
+| 1 | deposit 10.0 HTK @ $0.10167308 | [message](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10841114/messages/1) |
+| 2 | withdraw 5.0 HTK @ $0.10167308 | [message](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10841114/messages/2) |
 <!-- TESTNET_PROOF:END -->
 
 ## Environment variables
