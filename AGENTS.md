@@ -1,150 +1,79 @@
-# Agent instructions
+# AGENTS.md
 
-## Template concept (do not regress)
+Briefing for coding agents (Cursor, Claude Code via `CLAUDE.md`, Codex) working in this repo.
 
-This repo is the **Oracle-gated Vault** Scaffold-HBAR template (not a blank demo).
+## What this is
 
-- Load-bearing oracle: `IPriceOracle` → `OracleGatedVault.requirePriceInBand()`.
-- Local default: `MockPriceOracle`. Do not delete mock path; live Supra/Pyth go behind the same interface (see `docs/ORACLE_ADAPTERS.md`).
-- Frontend concept route: `/vault`. Prefer Debug Contracts for write calls until dedicated hooks exist.
-- **Never** commit `.env`, private keys, or fabricate Hashscan/mirror proofs.
-- Owner faucet + testnet deploy only — see `docs/TESTNET_VERIFICATION.md` and `notes/OWNER_BOUNDARY.md`.
+**Oracle-gated Vault**, a Scaffold-HBAR template: an ERC-20 vault on Hedera that only accepts deposits and withdrawals while a Pyth price is fresh and inside an owner-set band. Pyth on Hedera is a pull oracle, so user actions carry a signed Hermes update and the vault verifies it in the same transaction.
 
----
+Stack: npm workspaces · `packages/hardhat` (Hardhat + hardhat-deploy, Solidity 0.8.28) · `packages/nextjs` (Next.js App Router, wagmi/viem, RainbowKit, DaisyUI). There is no Foundry package.
 
-Briefing for coding agents in this app (Cursor, Claude Code, Codex). Claude Code loads it through `CLAUDE.md`.
+## Invariants — do not break
 
-This is a Scaffold-HBAR dApp: Next.js App Router, wallet connect, Debug Contracts, and Hedera networks (testnet, mainnet, local fork). The CLI may have left only Hardhat or only Foundry.
-
-Use the package manager this project was created with (`packageManager` in the root `package.json`, or the lockfile). Examples use `npm`; if the app was created with npm, swap `npm <script>` for `npm run <script>`.
-
-## Which Solidity package
-
-- `packages/hardhat` exists → Hardhat (`hardhat-deploy`)
-- `packages/foundry` exists → Foundry (Forge scripts)
-- `packages/nextjs` is always the frontend (App Router, RainbowKit, Wagmi, Viem, DaisyUI)
-
-Follow only the flavor that is present.
+1. Every state-changing user path in `OracleGatedVault` goes through `requirePriceInBand()`. Do not add a deposit/withdraw path that skips it unless the user explicitly asks for an emergency exit.
+2. The vault depends only on `IPriceOracle` / `IUpdatablePriceOracle`. Oracle-specific code belongs in an adapter under `contracts/oracle/`, never in the vault.
+3. Prices are 8-decimal fixed point everywhere (`PRICE_DECIMALS`). Adapters normalise.
+4. On Hedera, `msg.value` and Pyth fees are **tinybars**; wallets send **weibars**. Off-chain code multiplies by `TINYBAR_TO_WEIBAR` (10^10). Never send a raw fee as `value`.
+5. Keep `MockPriceOracle` and `MockPyth` paths working: unit tests and the local chain must not need the network.
+6. Never commit `.env`, private keys, or invented transaction hashes/HashScan links. Only paste links produced by a real run.
 
 ## Commands
 
-Package-prefixed scripts for package-specific work. Keep only truly cross-workspace commands unprefixed.
+Flags for Hardhat go after `--` (npm swallows them otherwise).
 
 ```bash
-# Local chain + deploy + frontend (separate terminals)
-npm run hardhat:chain    # Hedera-forked Hardhat node on 8545
-npm run hardhat:deploy --network localhost
-npm run foundry:chain    # Anvil from the Foundry package
-npm run foundry:deploy
-npm run next:start       # http://localhost:3000
-
-# Frontend only
-npm run next:dev
-
-# Quality / build
-npm run lint
-npm run format
-npm run next:build
 npm run hardhat:compile
-npm run foundry:compile
+npm run hardhat:test                                  # offline, ~3 s
+npm run lint && npm run next:check-types              # must be clean
+npm run next:build
 
-# Live networks
-npm run hardhat:deploy --network hederaTestnet   # or hederaMainnet
-npm run foundry:deploy --network hedera_testnet  # or hedera_mainnet
-npm run hardhat:verify:testnet
-npm run foundry:verify:testnet
+npm run hardhat:chain                                 # local node (forks Hedera testnet)
+npm run hardhat:deploy -- --network localhost         # MockPriceOracle path
+npm run next:dev                                      # http://localhost:3000/vault
 
-# Deployer account
-npm run hardhat:account:generate
-npm run hardhat:account:import
-npm run hardhat:account
+npm run hardhat:account:generate                      # encrypted deployer key in packages/hardhat/.env
+npm run hardhat:deploy -- --network hederaTestnet     # PythPriceOracle on the live Pyth contract
+npm run hardhat:e2e:testnet                           # live deposit/withdraw with Pyth updates, prints HashScan links
 ```
 
-`npm run hardhat:deploy` without `--network localhost` targets the in-process `hardhat` network, not the long-running fork.
+Validate any contract change with `hardhat:test`; any frontend change with `next:check-types`, `next:lint` and `next:build`.
 
-## Layout
+## Where things live
 
-### Hardhat
+| Concern | Path |
+|---|---|
+| Vault | `packages/hardhat/contracts/vault/OracleGatedVault.sol` |
+| Oracle interfaces / adapters | `packages/hardhat/contracts/oracle/` |
+| Network addresses, feed id, band defaults | `packages/hardhat/config/oracle.ts` |
+| Deploy (Pyth on chain 295/296, mock elsewhere) | `packages/hardhat/deploy/01_deploy_oracle_gated_vault.ts` |
+| Live e2e | `packages/hardhat/scripts/e2eTestnet.ts` |
+| Hermes / HashScan helpers (scripts) | `packages/hardhat/utils/hermes.ts`, `utils/hashscan.ts` |
+| Tests | `packages/hardhat/test/` |
+| Vault UI | `packages/nextjs/app/vault/` (`LivePythPrice`, `GateStatus`, `VaultActions`) |
+| Hermes client (browser) | `packages/nextjs/utils/oracle/pyth.ts` |
+| Generated ABIs + addresses | `packages/nextjs/contracts/deployedContracts.ts` (regenerated by every deploy; do not hand-edit) |
 
-- Contracts: `packages/hardhat/contracts/`
-- Deploy scripts: `packages/hardhat/deploy/`
-- Tests: `packages/hardhat/test/`
-- Config: `packages/hardhat/hardhat.config.ts`
-- Tagged deploy: if `deployHederaToken.tags = ["HederaToken"]`, run `npm run hardhat:deploy --tags HederaToken`
+## Common tasks
 
-### Foundry
+**Add an oracle adapter (Supra, Chainlink, custom).** Create `contracts/oracle/<Name>PriceOracle.sol` implementing `IPriceOracle` (plus `IUpdatablePriceOracle` if it is pull-based). Return 8 decimals and the source's own timestamp. Add a test file using a mock of the source. Deploy it and call `vault.setOracle(adapter)`. See `docs/ORACLE_ADAPTERS.md`.
 
-- Contracts: `packages/foundry/contracts/`
-- Deploy scripts: `packages/foundry/script/` (`Deploy.s.sol`, `DeployHederaToken.s.sol`, `DeployHtsTokenCreator.s.sol`)
-- Tests: `packages/foundry/test/`
-- Config: `packages/foundry/foundry.toml`
-- One contract: `npm run foundry:deploy --file DeployHederaToken.s.sol`
+**Change the feed.** Set `PYTH_PRICE_FEED_ID` (deploy) and `NEXT_PUBLIC_PYTH_PRICE_FEED_ID` (UI) to the same id, and choose a band that brackets the current price.
 
-### After deploy
-
-ABIs and addresses are written to `packages/nextjs/contracts/deployedContracts.ts`. Put third-party contracts in `packages/nextjs/contracts/externalContracts.ts`.
-
-Sample contracts on this starter: `HederaToken` (ERC-20) and `HtsTokenCreator` (HTS precompile at `0x167`).
-
-## Frontend contract interaction
-
-Hooks live in `packages/nextjs/hooks/scaffold-hbar`. Use the names that exist in the codebase:
-
-- `useScaffoldReadContract` — not `useScaffoldContractRead`
-- `useScaffoldWriteContract` — not `useScaffoldContractWrite`
-
-Also: `useScaffoldWatchContractEvent`, `useScaffoldEventHistory`, `useDeployedContractInfo`, `useScaffoldContract`, `useTransactor`.
-
-```typescript
-const { data: balance } = useScaffoldReadContract({
-  contractName: "HederaToken",
-  functionName: "balanceOf",
-  args: [connectedAddress],
-});
-
-const { writeContractAsync, isPending } = useScaffoldWriteContract({
-  contractName: "HederaToken",
-});
-
-await writeContractAsync({
-  functionName: "mint",
-  args: [connectedAddress, parseEther("1")],
-});
-```
-
-`HederaToken.mint` is `onlyOwner`. For HTS creation, `HtsTokenCreator.createToken` is payable (HTS fee via `msg.value`) and emits `TokenCreated`.
-
-### UI
-
-Use `@scaffold-hbar-ui/components` for web3 UI: `Address`, `AddressInput`, `Balance`, `EtherInput`, `IntegerInput`.
-
-Use DaisyUI classes, not raw Tailwind when a DaisyUI component exists:
+**Read/write contracts in the UI.** Use the Scaffold hooks from `~~/hooks/scaffold-hbar`: `useScaffoldReadContract`, `useScaffoldWriteContract` (supports `value` and `gas`), `useDeployedContractInfo`. Contract names must exist in `deployedContracts.ts`, so deploy locally first when adding a contract.
 
 ```tsx
-<button className="btn btn-primary">Connect</button>
+const { data: gate } = useScaffoldReadContract({ contractName: "OracleGatedVault", functionName: "previewGate" });
+const { writeContractAsync } = useScaffoldWriteContract({ contractName: "OracleGatedVault" });
+await writeContractAsync({
+  functionName: "depositWithPriceUpdate",
+  args: [amount, updateData],
+  value: feeTinybars * TINYBAR_TO_WEIBAR,
+});
 ```
-
-### Networks
-
-- Hardhat: `packages/hardhat/hardhat.config.ts` (`hederaTestnet` 296, `hederaMainnet` 295)
-- Foundry: `packages/foundry/foundry.toml` (`hedera_testnet`, `hedera_mainnet`)
-- Next.js: `packages/nextjs/scaffold.config.ts` (target networks, polling, RPC overrides, WalletConnect)
 
 ## Style
 
-| Style | Use |
-| --- | --- |
-| `UpperCamelCase` | types, components |
-| `lowerCamelCase` | variables, functions |
-| `CONSTANT_CASE` | constants |
-| `snake_case` | Hardhat deploy files and Foundry scripts |
-
-Next.js imports use the `~~` alias:
-
-```typescript
-import { useTargetNetwork } from "~~/hooks/scaffold-hbar";
-```
-
-App Router pages live under `packages/nextjs/app/`. Add `"use client"` when the page uses hooks.
-
-Prefer `type` over `interface`. No `T` prefix on types. Let TypeScript infer when it can. Comments should add information.
+- Solidity: custom errors (no revert strings), NatSpec on public surface, checks-effects-interactions, `nonReentrant` on user actions.
+- TypeScript: `type` over `interface`, `~~` import alias, `"use client"` for pages with hooks, DaisyUI classes for UI.
+- Hardhat deploy files are numbered `NN_deploy_<name>.ts` and tagged.
+- Comments explain why, not what. No dead code.

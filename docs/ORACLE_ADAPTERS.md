@@ -1,66 +1,71 @@
-# Oracle adapters (Supra / Pyth) — load-bearing integration
+# Oracle adapters
 
-## Why this is load-bearing (ecosystem rubric)
-
-`OracleGatedVault.requirePriceInBand()` **always** reads `IPriceOracle.latestPrice()`. If the oracle is removed or returns garbage outside the band / past `maxStaleness`, `deposit` and `withdraw` revert. The template’s product story is “price-band gated vault,” so the oracle adapter is not optional glue — it is the gate.
-
-| Mode | Contract | Keys / faucet | When to use |
-|------|----------|---------------|-------------|
-| Local / CI | `MockPriceOracle` | None | Default DX, unit tests, `npm run hardhat:test` |
-| Testnet read-only | Adapter implementing `IPriceOracle` | RPC only | When a Hedera testnet feed exists |
-| Forked mainnet | Adapter + Hardhat fork | Optional mainnet RPC | When only mainnet feeds exist (allowed by bounty brief) |
-
-## Interface
+The vault depends on two small interfaces. Everything oracle-specific lives in an adapter.
 
 ```solidity
 interface IPriceOracle {
-    function latestPrice() external view returns (uint256 price, uint256 updatedAt);
+    function latestPrice() external view returns (uint256 price, uint256 updatedAt); // 8 decimals
     function decimals() external view returns (uint8);
+}
+
+interface IUpdatablePriceOracle is IPriceOracle {
+    function getUpdateFee(bytes[] calldata updateData) external view returns (uint256 fee); // tinybars on Hedera
+    function updatePrice(bytes[] calldata updateData) external payable;
 }
 ```
 
-Canonical scale in this template: **8 decimals** (Pyth-style). Vault band defaults: min `80e6`, max `120e6`, staleness `3600` seconds (see `deploy/03_deploy_oracle_gated_vault.ts`).
+`OracleGatedVault` enforces freshness (`maxStaleness`) and the band; adapters normalise units and reject data that is invalid at the source (negative price, wide confidence).
 
-## Local (default)
+## Pyth (shipped)
 
-1. Deploy script tags `OracleGatedVault` deploy `MockPriceOracle` then the vault.
-2. Owner calls `MockPriceOracle.setPrice(uint256)` to move the band for demos.
-3. Frontend `/vault` shows `NEXT_PUBLIC_ORACLE_MODE` (default `mock`).
+| | Hedera testnet | Hedera mainnet |
+|---|---|---|
+| Pyth contract | `0xA2aa501b19aff244D90cc15a4Cf739D2725B5729` ([0.0.3042133](https://hashscan.io/testnet/contract/0.0.3042133)) | same address ([0.0.4622850](https://hashscan.io/mainnet/contract/0.0.4622850)) |
+| Hermes | `https://hermes.pyth.network` (stable) | same |
+| Update fee | 1 tinybar per update | per Pyth governance |
 
-No API keys, no Portal faucet, no wallet required for compile/test/build.
+Source: [Pyth EVM contract addresses](https://docs.pyth.network/price-feeds/core/contract-addresses/evm), [Hedera docs: Pyth](https://docs.hedera.com/evm/integrations/oracles/pyth).
 
-## Wiring a live Supra adapter (sketch)
+`PythPriceOracle(pyth, priceId, decimals, maxConfidenceBps)`:
 
-1. Confirm Supra pull / on-chain consumer address for Hedera (testnet or mainnet).
-2. Implement `contracts/oracle/SupraPriceOracle.sol` that:
-   - Calls Supra’s verified price API / precompile surface for the chosen feed id
-   - Maps raw price + timestamp into `latestPrice()` with 8 decimals
-3. Deploy adapter; call `vault.setOracle(adapter)`.
-4. Set `NEXT_PUBLIC_ORACLE_MODE=read-only-live` and `NEXT_PUBLIC_PRICE_FEED_ID=<id>`.
-5. Keep `MockPriceOracle` path for CI — never delete the mock.
+- `latestPrice()` reads `getPriceUnsafe(priceId)` and returns `(price scaled to decimals, publishTime)`. Staleness is deliberately left to the vault so one adapter can serve consumers with different tolerances.
+- Reverts `NonPositivePrice` for `price <= 0`, `ConfidenceTooWide` when `conf / price > maxConfidenceBps / 10_000`, `ExponentOutOfRange` for exponents outside `[-18, 0]`.
+- `updatePrice(update)` forwards exactly `pyth.getUpdateFee(update)` to `pyth.updatePriceFeeds`; any other `msg.value` reverts `IncorrectUpdateFee`. The vault computes the fee, forwards it, and refunds the caller's excess.
 
-Official Supra docs: https://docs.supra.com/ (verify Hedera deployment status before coding).
+### Off-chain flow
 
-## Wiring a live Pyth adapter (sketch)
+```ts
+// browser: packages/nextjs/utils/oracle/pyth.ts — scripts: packages/hardhat/utils/hermes.ts
+const res = await fetch(`${HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}&encoding=hex`);
+const updateData = (await res.json()).binary.data.map(h => `0x${h}`);
+const fee = await vault.getUpdateFee(updateData);                 // tinybars
+await vault.depositWithPriceUpdate(amount, updateData, { value: fee * 10n ** 10n }); // weibars
+```
 
-1. Confirm Pyth price-feed contract / Hermes endpoint usable from Hedera JSON-RPC.
-2. Implement `contracts/oracle/PythPriceOracle.sol` wrapping `getPriceUnsafe` / `getPriceNoOlderThan` for a feed id.
-3. Same `setOracle` + env vars as above.
-4. If only Ethereum mainnet feeds exist: document Hardhat `fork` of that chain in README; CI stays on mock.
+### Why not just `getPriceNoOlderThan`?
 
-Official Pyth docs: https://docs.pyth.network/
+On Hedera testnet the stored HBAR/USD price is usually days or weeks old because nobody pays to update it. A consumer that only reads would be closed permanently. Carrying the update inside the user's transaction keeps the price seconds old without a keeper.
 
-## Staleness and band policy
+## Adding Supra
 
-- `maxStaleness`: reject if `block.timestamp - updatedAt > maxStaleness` (see `StalePrice`).
-- Band: reject if `price < minPrice || price > maxPrice` (see `PriceOutOfBand`).
-- Owner can retune via `setBand(min, max, maxStaleness)` without redeploying the vault.
+Supra's pull oracle follows the same shape: fetch a signed proof off-chain, verify it on-chain, then read. Check the [Supra docs](https://docs.supra.com/) for the current Hedera pull-oracle verifier address before coding.
 
-## OWNER eligibility tx
+1. `contracts/oracle/SupraPriceOracle.sol` implementing `IUpdatablePriceOracle`: `updatePrice` calls the Supra verifier with the proof bytes, `latestPrice` reads the verified pair and scales to 8 decimals using the pair's decimals, returning Supra's timestamp (convert ms to s if needed).
+2. A test with a mock verifier, mirroring `test/PythPriceOracle.test.ts`.
+3. Deploy, then `vault.setOracle(supraAdapter)`. The frontend needs a Supra proof client in place of `fetchPriceUpdateData`.
 
-See [`TESTNET_VERIFICATION.md`](./TESTNET_VERIFICATION.md). Portal faucet → `hardhat:deploy --network hederaTestnet --tags OracleGatedVault` → real Hashscan URL. Never invent links.
+## Adding Chainlink (push oracle)
 
-## Non-goals
+Chainlink Data Feeds on Hedera are push-based, so implement only `IPriceOracle`:
 
-- This template does not ship a production risk engine, liquidation bot, or yield strategy.
-- Live adapter bytecode is intentionally thin stubs + docs so consumers can swap feeds without forking vault logic.
+```solidity
+(, int256 answer,, uint256 updatedAt,) = feed.latestRoundData();
+if (answer <= 0) revert NonPositivePrice(answer);
+return (_scale(uint256(answer), feed.decimals()), updatedAt);
+```
+
+Call the plain `deposit` / `withdraw`; the `*WithPriceUpdate` variants are only for pull oracles. Set `maxStaleness` above the feed's heartbeat.
+
+## When a protocol has no Hedera testnet deployment
+
+The bounty brief allows read-only or forked-mainnet integrations. `npm run hardhat:fork` starts a Hardhat node forking Hedera (`HEDERA_RPC_URL` can point at mainnet), so an adapter can be exercised against mainnet state locally.

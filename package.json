@@ -19,15 +19,17 @@
     "hardhat:clean": "npm run clean -w @sh/hardhat --",
     "hardhat:compile": "npm run compile -w @sh/hardhat --",
     "hardhat:deploy": "npm run deploy -w @sh/hardhat --",
+    "hardhat:e2e:testnet": "npm run e2e:testnet -w @sh/hardhat --",
     "hardhat:flatten": "npm run flatten -w @sh/hardhat --",
     "hardhat:fork": "npm run fork -w @sh/hardhat --",
     "hardhat:format": "npm run format -w @sh/hardhat --",
     "hardhat:lint": "npm run lint -w @sh/hardhat --",
     "hardhat:lint-staged": "npm run lint-staged -w @sh/hardhat --",
     "hardhat:test": "npm run test -w @sh/hardhat --",
+    "hardhat:test:gas": "npm run test:gas -w @sh/hardhat --",
     "hardhat:verify": "npm run verify -w @sh/hardhat --",
-    "hardhat:verify:testnet": "npm run verify:testnet -w @sh/hardhat --",
     "hardhat:verify:mainnet": "npm run verify:mainnet -w @sh/hardhat --",
+    "hardhat:verify:testnet": "npm run verify:testnet -w @sh/hardhat --",
     "lint": "npm run next:lint -- && npm run hardhat:lint --",
     "next:build": "npm run build -w @sh/nextjs --",
     "next:check-types": "npm run check-types -w @sh/nextjs --",
@@ -35,7 +37,8 @@
     "next:format": "npm run format -w @sh/nextjs --",
     "next:lint": "npm run lint -w @sh/nextjs --",
     "next:serve": "npm run serve -w @sh/nextjs --",
-    "next:start": "npm run start -w @sh/nextjs --"
+    "next:start": "npm run start -w @sh/nextjs --",
+    "test": "npm run hardhat:test"
   },
   "packageManager": "npm@10.0.0",
   "devDependencies": {
@@ -45,5 +48,6 @@
   "engines": {
     "node": ">=20.18.3"
   },
-  "description": "Scaffold-HBAR oracle-gated vault template (Supra/Pyth-style price band)"
+  "description": "Scaffold-HBAR template: an ERC-20 vault on Hedera gated by a live Pyth price feed (pull oracle)",
+  "license": "MIT"
 }
