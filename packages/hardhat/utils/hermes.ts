@@ -1,8 +1,9 @@
 /**
- * Minimal client for Pyth Hermes (https://hermes.pyth.network), the off-chain service that
- * serves signed price updates for Pyth's pull oracle.
+ * Minimal client for Pyth Hermes, the off-chain service that serves signed price updates
+ * for Pyth's pull oracle. Since the Pyth Core upgrade (26 Aug 2026) Hermes requires an API key
+ * (Pyth Terminal); set PYTH_API_KEY.
  */
-export const HERMES_URL = process.env.PYTH_HERMES_URL || "https://hermes.pyth.network";
+export const HERMES_URL = process.env.PYTH_HERMES_URL || "https://pyth.dourolabs.app/hermes";
 
 type HermesLatestResponse = {
   binary: { encoding: string; data: string[] };
@@ -11,8 +12,12 @@ type HermesLatestResponse = {
 
 /** Fetches the latest signed update for `feedIds`, ready to pass to `updatePriceFeeds`. */
 export async function fetchPriceUpdate(feedIds: string[]): Promise<{ updateData: string[]; publishTime?: number }> {
+  const apiKey = process.env.PYTH_API_KEY;
+  if (!apiKey) throw new Error("PYTH_API_KEY is not set (Hermes requires an API key, see README).");
   const query = feedIds.map(id => `ids[]=${id}`).join("&");
-  const res = await fetch(`${HERMES_URL}/v2/updates/price/latest?${query}&encoding=hex`);
+  const res = await fetch(`${HERMES_URL}/v2/updates/price/latest?${query}&encoding=hex`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
   if (!res.ok) {
     throw new Error(`Hermes request failed: ${res.status} ${await res.text()}`);
   }

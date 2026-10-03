@@ -115,7 +115,7 @@ const Home: NextPage = () => {
                 <div>
                   <p className="m-0 font-medium">Try the vault</p>
                   <Link href="/vault" className="link link-primary text-xs">
-                    /vault — live Pyth price, gate status, deposit &amp; withdraw
+                    /vault — live Chainlink price, gate status, deposit &amp; withdraw
                   </Link>
                 </div>
               </div>
@@ -128,7 +128,7 @@ const Home: NextPage = () => {
                       packages/hardhat/contracts/vault/OracleGatedVault.sol
                     </code>
                     <code className="text-xs bg-base-200 px-2 py-1 rounded">
-                      packages/hardhat/contracts/oracle/PythPriceOracle.sol
+                      packages/hardhat/contracts/oracle/ChainlinkPriceOracle.sol
                     </code>
                   </div>
                 </div>

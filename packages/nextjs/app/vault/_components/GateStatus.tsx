@@ -2,7 +2,7 @@
 
 import { formatUnits } from "viem";
 import { useScaffoldReadContract } from "~~/hooks/scaffold-hbar";
-import { PRICE_DECIMALS } from "~~/utils/oracle/pyth";
+import { PRICE_DECIMALS } from "~~/utils/oracle/chainlink";
 
 const usd = (value?: bigint) => (value === undefined ? "…" : `$${formatUnits(value, PRICE_DECIMALS)}`);
 
@@ -51,8 +51,7 @@ export const GateStatus = () => {
       </dl>
       {gate && !fresh && (
         <p className="text-xs text-base-content/70 m-0">
-          Stale is normal for a pull oracle: the deposit and withdraw buttons post a fresh signed Pyth price in the same
-          transaction.
+          The oracle has not published within the staleness window, so the vault is closed until the next round.
         </p>
       )}
     </div>

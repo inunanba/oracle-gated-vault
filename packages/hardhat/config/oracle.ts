@@ -3,6 +3,14 @@
  * Override any value with the matching env var (see packages/hardhat/.env.example).
  */
 
+export type OracleProvider = "chainlink" | "pyth";
+
+/** Chainlink HBAR/USD Data Feeds (8 decimals). https://docs.chain.link/data-feeds/price-feeds/addresses?network=hedera */
+export const CHAINLINK_HBAR_USD: Record<number, string> = {
+  296: "0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a",
+  295: "0xAF685FB45C12b92b5054ccb9313e135525F9b5d5",
+};
+
 /** Pyth price feeds contract; same address on Hedera testnet (0.0.3042133) and mainnet (0.0.4622850). */
 export const PYTH_HEDERA_ADDRESS = "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729";
 
@@ -18,11 +26,13 @@ export type VaultParams = {
   maxStaleness: number;
 };
 
-/** Hedera networks: real Pyth feed, wide HBAR/USD band, price must be posted in the same minute. */
-export const HEDERA_VAULT_DEFAULTS: VaultParams = {
-  minPrice: 1_000_000n, // $0.01
-  maxPrice: 100_000_000n, // $1.00
-  maxStaleness: 60,
+const HEDERA_BAND = { minPrice: 1_000_000n, maxPrice: 100_000_000n }; // $0.01 – $1.00
+
+export const HEDERA_VAULT_DEFAULTS: Record<OracleProvider, VaultParams> = {
+  // Push feed: rounds land on deviation or a 24 h heartbeat, so allow 25 h.
+  chainlink: { ...HEDERA_BAND, maxStaleness: 90_000 },
+  // Pull feed: the update is posted in the same transaction, so a minute is plenty.
+  pyth: { ...HEDERA_BAND, maxStaleness: 60 },
 };
 
 /** Local chain: MockPriceOracle at $1.00 with a ±20% band. */
@@ -36,6 +46,14 @@ export const LOCAL_VAULT_DEFAULTS: VaultParams = {
 export const DEFAULT_MAX_CONFIDENCE_BPS = 200;
 
 export const HEDERA_CHAIN_IDS = new Set([295, 296]);
+
+export function oracleProviderFromEnv(): OracleProvider {
+  const value = (process.env.ORACLE_PROVIDER || "chainlink").toLowerCase();
+  if (value !== "chainlink" && value !== "pyth") {
+    throw new Error(`ORACLE_PROVIDER must be "chainlink" or "pyth", got "${value}"`);
+  }
+  return value;
+}
 
 export function vaultParamsFromEnv(defaults: VaultParams): VaultParams {
   return {

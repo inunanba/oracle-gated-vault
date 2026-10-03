@@ -2,29 +2,16 @@
 
 import { useState } from "react";
 import { formatEther, parseEther } from "viem";
-import { useAccount, usePublicClient } from "wagmi";
-import {
-  useDeployedContractInfo,
-  useScaffoldReadContract,
-  useScaffoldWriteContract,
-  useTargetNetwork,
-} from "~~/hooks/scaffold-hbar";
-import { DEFAULT_FEED_ID, TINYBAR_TO_WEIBAR, fetchPriceUpdateData } from "~~/utils/oracle/pyth";
+import { useAccount } from "wagmi";
+import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-hbar";
 import { notification } from "~~/utils/scaffold-hbar";
 
-const HEDERA_CHAIN_IDS = new Set([295, 296]);
-
 /**
- * Deposit / withdraw panel. On Hedera networks each action fetches a signed Pyth update from Hermes
- * and calls the `*WithPriceUpdate` variant so the gate is evaluated against a price seconds old.
- * On the local chain (MockPriceOracle) it calls plain `deposit` / `withdraw`.
+ * Faucet / approve / deposit / withdraw panel. Every vault call is checked on-chain against the oracle;
+ * a closed gate surfaces as a decoded revert (PriceOutOfBand, StalePrice) in the transaction toast.
  */
 export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
   const { address } = useAccount();
-  const { targetNetwork } = useTargetNetwork();
-  const usesPullOracle = HEDERA_CHAIN_IDS.has(targetNetwork.id);
-  const publicClient = usePublicClient({ chainId: targetNetwork.id });
-  const { data: vault } = useDeployedContractInfo({ contractName: "OracleGatedVault" });
   const [amount, setAmount] = useState("10");
   const [busy, setBusy] = useState<string>();
 
@@ -60,33 +47,20 @@ export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
     try {
       await action();
     } catch (e) {
-      // useTransactor already shows the decoded revert reason (e.g. PriceOutOfBand)
+      // useTransactor already shows the decoded revert reason
       console.error(e);
     } finally {
       setBusy(undefined);
     }
   };
 
-  const gated = async (functionName: "deposit" | "withdraw") => {
-    if (!parsedAmount) return notification.error("Enter a valid amount");
-    if (!usesPullOracle) {
-      return writeVault({ functionName, args: [parsedAmount] });
+  const gated = (functionName: "deposit" | "withdraw") => {
+    if (!parsedAmount) {
+      notification.error("Enter a valid amount");
+      return Promise.resolve();
     }
-    if (!publicClient || !vault) throw new Error("Vault not loaded");
-    const updateData = await fetchPriceUpdateData(DEFAULT_FEED_ID);
-    // Fee is quoted in tinybars (Hedera's in-EVM unit); the wallet sends weibars.
-    const feeTinybars = (await publicClient.readContract({
-      address: vault.address,
-      abi: vault.abi,
-      functionName: "getUpdateFee",
-      args: [updateData],
-    })) as bigint;
-    return writeVault({
-      functionName: functionName === "deposit" ? "depositWithPriceUpdate" : "withdrawWithPriceUpdate",
-      args: [parsedAmount, updateData],
-      value: feeTinybars * TINYBAR_TO_WEIBAR,
-      gas: 600_000n,
-    });
+    // Explicit gas: Hedera charges for the limit, and estimation of a reverting call fails early.
+    return writeVault({ functionName, args: [parsedAmount], gas: 300_000n });
   };
 
   if (!address) {
@@ -96,6 +70,8 @@ export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
       </div>
     );
   }
+
+  const spinner = <span className="loading loading-spinner loading-xs" />;
 
   return (
     <div className="bg-base-100 rounded-2xl shadow p-6 border border-base-300 space-y-4">
@@ -118,9 +94,9 @@ export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
         <button
           className="btn btn-outline btn-sm"
           disabled={!!busy}
-          onClick={() => run("faucet", () => writeToken({ functionName: "faucet" }))}
+          onClick={() => run("faucet", () => writeToken({ functionName: "faucet", gas: 150_000n }))}
         >
-          {busy === "faucet" ? <span className="loading loading-spinner loading-xs" /> : "Get 100 demo HTK"}
+          {busy === "faucet" ? spinner : "Get 100 demo HTK"}
         </button>
         {needsApproval ? (
           <button
@@ -130,7 +106,7 @@ export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
               run("approve", () => writeToken({ functionName: "approve", args: [vaultAddress, parsedAmount] }))
             }
           >
-            {busy === "approve" ? <span className="loading loading-spinner loading-xs" /> : "Approve"}
+            {busy === "approve" ? spinner : "Approve"}
           </button>
         ) : (
           <button
@@ -138,7 +114,7 @@ export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
             disabled={!!busy}
             onClick={() => run("deposit", () => gated("deposit"))}
           >
-            {busy === "deposit" ? <span className="loading loading-spinner loading-xs" /> : "Deposit"}
+            {busy === "deposit" ? spinner : "Deposit"}
           </button>
         )}
         <button
@@ -146,15 +122,9 @@ export const VaultActions = ({ vaultAddress }: { vaultAddress: string }) => {
           disabled={!!busy}
           onClick={() => run("withdraw", () => gated("withdraw"))}
         >
-          {busy === "withdraw" ? <span className="loading loading-spinner loading-xs" /> : "Withdraw"}
+          {busy === "withdraw" ? spinner : "Withdraw"}
         </button>
       </div>
-
-      <p className="text-xs text-base-content/60 m-0">
-        {usesPullOracle
-          ? "Each action fetches a signed HBAR/USD update from Pyth Hermes and verifies it on-chain in the same transaction (Pyth fee: 1 tinybar)."
-          : "Local chain: the vault reads MockPriceOracle. Move the price with setPrice on the Debug page to see the gate close."}
-      </p>
     </div>
   );
 };

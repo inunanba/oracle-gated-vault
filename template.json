@@ -1,12 +1,18 @@
 {
   "name": "oracle-gated-vault",
-  "description": "ERC-20 vault on Hedera gated by a live Pyth price feed: pull a signed price from Hermes, verify it on-chain, deposit or withdraw only while the price is fresh and in band.",
+  "description": "ERC-20 vault on Hedera that only opens while a live oracle price is fresh and in band: Chainlink HBAR/USD Data Feed by default, Pyth pull-oracle adapter included.",
   "version": "1.0.0",
   "create-scaffold-hbar": {
     "capabilities": {
-      "frontend": ["nextjs-app"],
-      "solidityFramework": ["hardhat"],
-      "packageManager": ["npm"]
+      "frontend": [
+        "nextjs-app"
+      ],
+      "solidityFramework": [
+        "hardhat"
+      ],
+      "packageManager": [
+        "npm"
+      ]
     },
     "defaults": {
       "frontend": "nextjs-app",
@@ -21,19 +27,41 @@
         {
           "title": "Try it (no keys needed)",
           "steps": [
-            { "label": "Unit tests", "command": "npm run hardhat:test" },
-            { "label": "Frontend (talks to the public testnet vault)", "command": "npm run next:dev" },
-            { "url": "http://localhost:3000/vault" }
+            {
+              "label": "Unit tests",
+              "command": "npm run hardhat:test"
+            },
+            {
+              "label": "Frontend (live Chainlink price, public testnet vault)",
+              "command": "npm run next:dev"
+            },
+            {
+              "url": "http://localhost:3000/vault"
+            }
           ]
         },
         {
           "title": "Deploy your own on Hedera testnet",
           "steps": [
-            { "label": "Create a deployer key", "command": "npm run hardhat:account:generate" },
-            { "label": "Fund its EVM address", "url": "https://portal.hedera.com/faucet" },
-            { "label": "Deploy", "command": "npm run hardhat:deploy -- --network hederaTestnet" },
-            { "label": "Live deposit/withdraw with Pyth updates", "command": "npm run hardhat:e2e:testnet" },
-            { "text": "README.md explains the pull-oracle flow; AGENTS.md briefs coding agents." }
+            {
+              "label": "Create a deployer key",
+              "command": "npm run hardhat:account:generate"
+            },
+            {
+              "label": "Fund its EVM address",
+              "url": "https://portal.hedera.com/faucet"
+            },
+            {
+              "label": "Deploy",
+              "command": "npm run hardhat:deploy -- --network hederaTestnet"
+            },
+            {
+              "label": "Live faucet/approve/deposit/withdraw with HashScan links",
+              "command": "npm run hardhat:e2e:testnet"
+            },
+            {
+              "text": "README.md explains the oracle gate (Chainlink push, Pyth pull); AGENTS.md briefs coding agents."
+            }
           ]
         }
       ]

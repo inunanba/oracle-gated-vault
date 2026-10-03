@@ -16,12 +16,25 @@ interface IUpdatablePriceOracle is IPriceOracle {
 
 `OracleGatedVault` enforces freshness (`maxStaleness`) and the band; adapters normalise units and reject data that is invalid at the source (negative price, wide confidence).
 
-## Pyth (shipped)
+## Chainlink (default on Hedera)
+
+| | Hedera testnet | Hedera mainnet |
+|---|---|---|
+| HBAR/USD feed | `0x59bC155EB6c6C415fE43255aF66EcF0523c92B4a` | `0xAF685FB45C12b92b5054ccb9313e135525F9b5d5` |
+| Decimals | 8 | 8 |
+
+Source: [Chainlink Data Feeds on Hedera](https://docs.chain.link/data-feeds/price-feeds/addresses?network=hedera). Feeds are push-based: Chainlink nodes write a round when the price deviates past a threshold or the heartbeat expires, so reading costs only gas and needs no keys.
+
+`ChainlinkPriceOracle(feed, decimals)` reads `latestRoundData()`, scales the answer from the feed's decimals to `decimals`, and returns the round's `updatedAt`. It reverts `NonPositivePrice` for `answer <= 0` and `IncompleteRound` when `updatedAt == 0`. Set the vault's `maxStaleness` above the feed heartbeat (default 90 000 s = 24 h + 1 h). Use plain `deposit` / `withdraw`; the `*WithPriceUpdate` variants revert for push feeds because they have no update fee.
+
+## Pyth (opt-in pull adapter)
+
+> Since the Pyth Core upgrade of 26 Aug 2026, Hermes requires an API key from Pyth Terminal (`Authorization: Bearer $PYTH_API_KEY`, base URL `https://pyth.dourolabs.app/hermes`). Hedera is listed among the chains not in the upgrade, and the HBAR/USD slot of the Hedera Pyth contract was last refreshed on 24 Aug 2026. Verify that a fresh Hermes update is accepted on Hedera before relying on this path; the adapter itself is covered by unit tests with Pyth's `MockPyth`.
 
 | | Hedera testnet | Hedera mainnet |
 |---|---|---|
 | Pyth contract | `0xA2aa501b19aff244D90cc15a4Cf739D2725B5729` ([0.0.3042133](https://hashscan.io/testnet/contract/0.0.3042133)) | same address ([0.0.4622850](https://hashscan.io/mainnet/contract/0.0.4622850)) |
-| Hermes | `https://hermes.pyth.network` (stable) | same |
+| Hermes | `https://pyth.dourolabs.app/hermes` (API key) | same |
 | Update fee | 1 tinybar per update | per Pyth governance |
 
 Source: [Pyth EVM contract addresses](https://docs.pyth.network/price-feeds/core/contract-addresses/evm), [Hedera docs: Pyth](https://docs.hedera.com/evm/integrations/oracles/pyth).
@@ -35,8 +48,10 @@ Source: [Pyth EVM contract addresses](https://docs.pyth.network/price-feeds/core
 ### Off-chain flow
 
 ```ts
-// browser: packages/nextjs/utils/oracle/pyth.ts — scripts: packages/hardhat/utils/hermes.ts
-const res = await fetch(`${HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}&encoding=hex`);
+// packages/hardhat/utils/hermes.ts (keep the API key server-side; don't ship it to the browser)
+const res = await fetch(`${HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}&encoding=hex`, {
+  headers: { Authorization: `Bearer ${process.env.PYTH_API_KEY}` },
+});
 const updateData = (await res.json()).binary.data.map(h => `0x${h}`);
 const fee = await vault.getUpdateFee(updateData);                 // tinybars
 await vault.depositWithPriceUpdate(amount, updateData, { value: fee * 10n ** 10n }); // weibars
@@ -44,7 +59,7 @@ await vault.depositWithPriceUpdate(amount, updateData, { value: fee * 10n ** 10n
 
 ### Why not just `getPriceNoOlderThan`?
 
-On Hedera testnet the stored HBAR/USD price is usually days or weeks old because nobody pays to update it. A consumer that only reads would be closed permanently. Carrying the update inside the user's transaction keeps the price seconds old without a keeper.
+A pull feed is only as fresh as the last update someone paid for. A consumer that only reads would be closed whenever nobody else has updated recently. Carrying the update inside the user's transaction keeps the price seconds old without a keeper.
 
 ## Adding Supra
 
@@ -52,19 +67,7 @@ Supra's pull oracle follows the same shape: fetch a signed proof off-chain, veri
 
 1. `contracts/oracle/SupraPriceOracle.sol` implementing `IUpdatablePriceOracle`: `updatePrice` calls the Supra verifier with the proof bytes, `latestPrice` reads the verified pair and scales to 8 decimals using the pair's decimals, returning Supra's timestamp (convert ms to s if needed).
 2. A test with a mock verifier, mirroring `test/PythPriceOracle.test.ts`.
-3. Deploy, then `vault.setOracle(supraAdapter)`. The frontend needs a Supra proof client in place of `fetchPriceUpdateData`.
-
-## Adding Chainlink (push oracle)
-
-Chainlink Data Feeds on Hedera are push-based, so implement only `IPriceOracle`:
-
-```solidity
-(, int256 answer,, uint256 updatedAt,) = feed.latestRoundData();
-if (answer <= 0) revert NonPositivePrice(answer);
-return (_scale(uint256(answer), feed.decimals()), updatedAt);
-```
-
-Call the plain `deposit` / `withdraw`; the `*WithPriceUpdate` variants are only for pull oracles. Set `maxStaleness` above the feed's heartbeat.
+3. Deploy, then `vault.setOracle(supraAdapter)`. Off-chain code fetches the Supra proof and calls `depositWithPriceUpdate`, exactly like the Pyth path in `scripts/e2eTestnet.ts`.
 
 ## When a protocol has no Hedera testnet deployment
 
